@@ -27,6 +27,7 @@ Output is deterministic (no timestamps) and ASCII only.
 from __future__ import annotations
 
 import re
+import textwrap
 import unicodedata
 from dataclasses import dataclass, field
 from typing import Any
@@ -615,9 +616,12 @@ def _manual_block(p: Plan, prefix: str = "# ") -> list[str]:
     if not p.manual:
         lines.append(prefix + "(none)")
     for sid, rule, why in p.manual:
-        lines.append(f"{prefix}{sid} ({rule.cat if rule else 'CAT ?'}): {_title(rule, sid)}")
-        lines.append(f"{prefix}  not automated: {_one_line(why, 160)}")
-        lines.append(f"{prefix}  fix: {_summary(rule)}")
+        head = f"{sid} ({rule.cat if rule else 'CAT ?'}): {_title(rule, sid)}"
+        for n, chunk in enumerate(textwrap.wrap(head, 110) or [head]):
+            lines.append(prefix + ("  " if n else "") + chunk)
+        lines.append(f"{prefix}  not automated: {_one_line(why, 100)}")
+        for n, chunk in enumerate(textwrap.wrap("fix: " + _summary(rule), 105)):
+            lines.append(prefix + "  " + ("  " if n else "") + chunk)
     return lines
 
 

@@ -57,7 +57,7 @@
     }
    },
    "reason": null,
-   "command": "secedit /export /mergedpolicy /cfg \"<temp file in $env:TEMP, deleted after reading>\" /areas SECURITYPOLICY USER_RIGHTS /quiet"
+   "command": "secedit /export /cfg \"<temp file in $env:TEMP, deleted after reading>\" /areas SECURITYPOLICY USER_RIGHTS /quiet"
   },
   "user_rights": {
    "status": "ok",
@@ -99,7 +99,7 @@
     "SeTcbPrivilege": "*S-1-5-21-2847261131-3359372870-1917415022-1005"
    },
    "reason": null,
-   "command": "secedit /export /mergedpolicy /cfg \"<temp file in $env:TEMP, deleted after reading>\" /areas SECURITYPOLICY USER_RIGHTS /quiet"
+   "command": "secedit /export /cfg \"<temp file in $env:TEMP, deleted after reading>\" /areas SECURITYPOLICY USER_RIGHTS /quiet"
   },
   "audit_policy": {
    "status": "ok",

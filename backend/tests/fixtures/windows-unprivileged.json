@@ -40,13 +40,13 @@
    "status": "unavailable",
    "value": null,
    "reason": "secedit /export failed (exit 740): the requested operation requires elevation (run as administrator)",
-   "command": "secedit /export /mergedpolicy /cfg \"<temp file in $env:TEMP, deleted after reading>\" /areas SECURITYPOLICY USER_RIGHTS /quiet"
+   "command": "secedit /export /cfg \"<temp file in $env:TEMP, deleted after reading>\" /areas SECURITYPOLICY USER_RIGHTS /quiet"
   },
   "user_rights": {
    "status": "unavailable",
    "value": null,
    "reason": "secedit /export failed (exit 740): the requested operation requires elevation (run as administrator)",
-   "command": "secedit /export /mergedpolicy /cfg \"<temp file in $env:TEMP, deleted after reading>\" /areas SECURITYPOLICY USER_RIGHTS /quiet"
+   "command": "secedit /export /cfg \"<temp file in $env:TEMP, deleted after reading>\" /areas SECURITYPOLICY USER_RIGHTS /quiet"
   },
   "audit_policy": {
    "status": "unavailable",

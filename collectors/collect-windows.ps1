@@ -19,7 +19,7 @@
   "unavailable" with the reason, and STIGWatch reports the rules that depend on it as
   Not Reviewed.
 
-  Commands run (all read-only): secedit /export /mergedpolicy, auditpol /backup,
+  Commands run (all read-only): secedit /export, auditpol /backup,
   auditpol /get /category:* /r, Get-CimInstance (Win32_OperatingSystem,
   Win32_ComputerSystem, Win32_Volume, Win32_UserAccount, Win32_DeviceGuard),
   Get-Partition, Get-WindowsFeature, Get-WindowsOptionalFeature -Online, Get-Service,
@@ -168,12 +168,13 @@ function Read-RegistryValue {
 }
 
 function Get-SeceditExport {
-    # 'secedit /export /mergedpolicy' to a temp file; read every section; delete the file.
+    # 'secedit /export' (the local security database, where applied Group Policy security
+    # settings are recorded) to a temp file; read every section; delete the file.
     if ($null -ne $script:Secedit) { return $script:Secedit }
     if ($null -ne $script:SeceditError) { throw $script:SeceditError }
     $tmp = Join-Path $env:TEMP ('stigwatch-' + [guid]::NewGuid().ToString('N') + '.inf')
     try {
-        $run = Invoke-Native 'secedit.exe' @('/export', '/mergedpolicy', '/cfg', $tmp, '/areas', 'SECURITYPOLICY', 'USER_RIGHTS', '/quiet')
+        $run = Invoke-Native 'secedit.exe' @('/export', '/cfg', $tmp, '/areas', 'SECURITYPOLICY', 'USER_RIGHTS', '/quiet')
         if ($run.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $tmp)) {
             $detail = ($run.Output -join ' ').Trim()
             if ($run.ExitCode -eq 740) { $detail = 'the requested operation requires elevation (run as administrator) ' + $detail }
@@ -203,7 +204,7 @@ function Get-SeceditExport {
     return $script:Secedit
 }
 
-$seceditCmd = 'secedit /export /mergedpolicy /cfg "<temp file in $env:TEMP, deleted after reading>" /areas SECURITYPOLICY USER_RIGHTS /quiet'
+$seceditCmd = 'secedit /export /cfg "<temp file in $env:TEMP, deleted after reading>" /areas SECURITYPOLICY USER_RIGHTS /quiet'
 
 # --- host ------------------------------------------------------------------
 
@@ -251,13 +252,13 @@ Add-Fact 'security_policy' $seceditCmd {
         }
         $result[$name] = $section
     }
-    if ($result.Count -eq 0) { throw 'the secedit export had no [System Access] section' }
+    if ($result.Count -eq 0) { throw ('the secedit export had no [System Access] section (sections: ' + (@($s.Keys) -join ', ') + ')') }
     $result
 }
 
 Add-Fact 'user_rights' $seceditCmd {
     $s = Get-SeceditExport
-    if (-not $s.Contains('Privilege Rights')) { throw 'the secedit export had no [Privilege Rights] section' }
+    if (-not $s.Contains('Privilege Rights')) { throw ('the secedit export had no [Privilege Rights] section (sections: ' + (@($s.Keys) -join ', ') + ')') }
     $rights = [ordered]@{}
     foreach ($k in $s['Privilege Rights'].Keys) {
         $entries = @($s['Privilege Rights'][$k] -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })

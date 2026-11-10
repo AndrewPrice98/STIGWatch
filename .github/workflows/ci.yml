@@ -144,6 +144,10 @@ jobs:
               lines = [f"PowerShell {data.get('powershell')}, privileged {data.get('privileged')}: "
                        f"{info['ok']} of {info['facts']} facts read",
                        "scan: " + ", ".join(f"{k} {v}" for k, v in counts.items())]
+              raw = data["facts"]
+              for fid in ("audit_policy", "features"):
+                  if raw.get(fid, {}).get("status") == "ok":
+                      lines.append(f"{fid} source: {raw[fid]['value'].get('source')}")
               lines += [f"unavailable {k}: {v}" for k, v in sorted(info["unavailable"].items())]
               print(f"::notice title=windows collector {name}::" + "%0A".join(lines))
       - name: Keep the collector output

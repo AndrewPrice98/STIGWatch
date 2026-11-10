@@ -48,7 +48,7 @@ BANNER = (
     "confidential. See User Agreement for details."
 )
 
-SECEDIT_CMD = ('secedit /export /mergedpolicy /cfg "<temp file in $env:TEMP, deleted after reading>" '
+SECEDIT_CMD = ('secedit /export /cfg "<temp file in $env:TEMP, deleted after reading>" '
                "/areas SECURITYPOLICY USER_RIGHTS /quiet")
 AUDITPOL_CMD = 'auditpol /backup /file:"<temp file in $env:TEMP, deleted after reading>"'
 REGISTRY_CMD = ("registry (read-only OpenBaseKey/OpenSubKey): the values listed in collect-windows.ps1 "

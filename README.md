@@ -36,7 +36,7 @@ python -m stigwatch coverage windows-server-2022
 
 The collector is read-only. It changes no setting, opens registry keys read-only and writes only the output file and two temporary exports in `%TEMP%` (from `secedit` and `auditpol`), each deleted straight after it is read. It never reads password hashes or the content of the Active Directory database. Without administrator rights, secedit, auditpol, the feature list, BitLocker, the TPM and Secure Boot are recorded as unavailable and the rules that need them are reported Not Reviewed. Every command it runs:
 
-- native tools: `secedit /export /mergedpolicy /areas SECURITYPOLICY USER_RIGHTS`, `auditpol /backup` (falls back to `auditpol /get /category:* /r`)
+- native tools: `secedit /export /areas SECURITYPOLICY USER_RIGHTS`, `auditpol /backup` (falls back to `auditpol /get /category:* /r`)
 - CIM: `Get-CimInstance` for `Win32_OperatingSystem`, `Win32_ComputerSystem`, `Win32_Volume`, `Win32_UserAccount`, `Win32_DeviceGuard` and `Win32_Tpm`
 - cmdlets: `Get-Partition`, `Get-WindowsFeature` (or `Get-WindowsOptionalFeature -Online` when it is missing), `Get-Service`, `Get-LocalUser`, `Get-LocalGroupMember`, `Get-MpComputerStatus`, `Get-NetFirewallProfile`, `Get-SmbServerConfiguration`, `Get-BitLockerVolume`, `Get-Tpm`, `Confirm-SecureBootUEFI`, `Get-WinEvent -ListLog`, `Get-Acl`, `Get-ChildItem` (the `Cert:` stores, and the NTDS folder on domain controllers to list its files)
 - registry: the values listed in `$RegistryValues` in the script, read with `RegistryKey.OpenBaseKey`/`OpenSubKey` without write access

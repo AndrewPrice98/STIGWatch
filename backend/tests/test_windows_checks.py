@@ -197,7 +197,7 @@ def test_open_results_carry_evidence_and_command():
     assert ev["path"] == r"registry[HKLM\SYSTEM\CurrentControlSet\Control\Lsa].NoLMHash.value"
     assert ev["command"].startswith("registry (read-only")
     r = results(load("noncompliant"))["WN22-UR-000020"]
-    assert r.evidence[0]["command"].startswith("secedit /export /mergedpolicy")
+    assert r.evidence[0]["command"].startswith("secedit /export /cfg")
 
 
 # --------------------------------------------------------------------------- Review Focus 1
@@ -536,7 +536,7 @@ def test_collector_contains_no_write_commands():
     assert sorted(natives) == sorted([
         ("auditpol.exe", "'/backup', ('/file:' + $tmp)"),
         ("auditpol.exe", "'/get', '/category:*', '/r'"),
-        ("secedit.exe", "'/export', '/mergedpolicy', '/cfg', $tmp, '/areas', 'SECURITYPOLICY', 'USER_RIGHTS', '/quiet'"),
+        ("secedit.exe", "'/export', '/cfg', $tmp, '/areas', 'SECURITYPOLICY', 'USER_RIGHTS', '/quiet'"),
     ])
     assert "Invoke-Expression" not in code and "iex " not in code
     # the only file written is the output file

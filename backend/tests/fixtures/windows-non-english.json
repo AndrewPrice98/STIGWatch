@@ -59,7 +59,7 @@
     }
    },
    "reason": null,
-   "command": "secedit /export /mergedpolicy /cfg \"<temp file in $env:TEMP, deleted after reading>\" /areas SECURITYPOLICY USER_RIGHTS /quiet"
+   "command": "secedit /export /cfg \"<temp file in $env:TEMP, deleted after reading>\" /areas SECURITYPOLICY USER_RIGHTS /quiet"
   },
   "user_rights": {
    "status": "ok",
@@ -100,7 +100,7 @@
     "SeDenyRemoteInteractiveLogonRight": "*S-1-5-21-1004336348-1177238915-682003330-519,*S-1-5-21-1004336348-1177238915-682003330-512,*S-1-5-113,*S-1-5-32-546"
    },
    "reason": null,
-   "command": "secedit /export /mergedpolicy /cfg \"<temp file in $env:TEMP, deleted after reading>\" /areas SECURITYPOLICY USER_RIGHTS /quiet"
+   "command": "secedit /export /cfg \"<temp file in $env:TEMP, deleted after reading>\" /areas SECURITYPOLICY USER_RIGHTS /quiet"
   },
   "audit_policy": {
    "status": "ok",

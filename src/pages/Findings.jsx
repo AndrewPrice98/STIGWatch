@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom'
 import { api } from '../api.js'
 import { NoData } from '../components/admin.jsx'
 import { OsTag } from '../components/hosts.jsx'
-import { CatBadge, Empty, ErrorState, Loading, PageHead, useAsync, usePageTitle } from '../components/ui.jsx'
+import {
+  About, CatBadge, Empty, ErrorState, Icon, Loading, PageHead, Panel, useAsync, usePageTitle,
+} from '../components/ui.jsx'
 import { mapLimit, scannedHosts } from '../data.js'
 import { CATS, OS_LABEL, filterFindings, groupFindings, plural } from '../lib.js'
 import { useUrlFilters } from '../useUrlFilters.js'
@@ -63,11 +65,13 @@ export default function Findings() {
 
   return (
     <div className="page">
-      <PageHead eyebrow="Across the fleet" title="Findings">
-        <p className="lede">
-          Open findings from every host&apos;s latest scan, grouped by STIG ID, so you can see which rules fail on
-          the most hosts. A rule that could not be checked is Not reviewed, not a pass, and is listed apart.
-        </p>
+      <PageHead title="Findings" sub="Open findings from every host's latest scan, grouped by STIG ID.">
+        <About>
+          <p>
+            Rules are grouped by STIG ID so you can see which ones fail on the most hosts. A rule that could not be
+            checked is Not reviewed, not a pass, and is listed apart under the hosts where it is open.
+          </p>
+        </About>
       </PageHead>
 
       {loading && !data && <Loading label="Loading findings…" />}
@@ -75,10 +79,11 @@ export default function Findings() {
       {data && data.hosts.length === 0 && <NoData onChanged={reload} />}
       {data && data.hosts.length > 0 && (
         <>
-          <form className="filters card" role="search" aria-label="Filter findings" onSubmit={(e) => { e.preventDefault(); submitSearch() }}>
-            <label className="field grow">
+          <form className="toolbar" role="search" aria-label="Filter findings" onSubmit={(e) => { e.preventDefault(); submitSearch() }}>
+            <label className="field grow search">
               <span>Search</span>
-              <input type="search" value={search} maxLength={100} placeholder="STIG ID or rule title"
+              <Icon name="search" />
+              <input type="search" value={search} maxLength={100} placeholder="Search STIG ID or rule title"
                 onChange={(e) => setSearch(e.target.value)} />
             </label>
             <label className="field">
@@ -91,25 +96,16 @@ export default function Findings() {
             <label className="field">
               <span>Operating system</span>
               <select value={filters.os} onChange={(e) => update({ os: e.target.value })}>
-                <option value="">All</option>
+                <option value="">All operating systems</option>
                 {Object.entries(OS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </label>
-            {any && <button type="button" className="btn ghost small" onClick={clear}>Clear filters</button>}
+            {any && <button type="button" className="btn ghost" onClick={clear}>Clear filters</button>}
           </form>
 
-          <section className="card" aria-labelledby="findings-count">
-            <div className="card-head">
-              <div>
-                <h2 id="findings-count" aria-live="polite">
-                  {any ? `${shown.length} of ${plural(data.groups.length, 'rule')}` : plural(data.groups.length, 'rule')} open on at least one host
-                </h2>
-                <p className="muted small">
-                  Most hosts first within each CAT. Host counts compare with the {plural(hostsByOs.linux, 'Ubuntu host')} and{' '}
-                  {plural(hostsByOs.windows, 'Windows host')} scanned.
-                </p>
-              </div>
-            </div>
+          <Panel id="findings-count" flush live
+            title={`${any ? `${shown.length} of ${plural(data.groups.length, 'rule')}` : plural(data.groups.length, 'rule')} open on at least one host`}
+            desc={`Most hosts first within each CAT. Host counts compare with the ${plural(hostsByOs.linux, 'Ubuntu host')} and ${plural(hostsByOs.windows, 'Windows host')} scanned.`}>
             {shown.length ? (
               <div className="table-wrap">
                 <table className="table cards findings-table">
@@ -136,12 +132,12 @@ export default function Findings() {
                           </th>
                           <td data-label="CAT"><CatBadge cat={g.cat} /></td>
                           <td data-label="Open on" className="num">
-                            <strong>{g.open.length}</strong><span className="muted small"> of {total} {g.os === 'windows' ? 'Windows' : 'Ubuntu'} hosts</span>
+                            <strong>{g.open.length}</strong><span className="muted"> of {total} {g.os === 'windows' ? 'Windows' : 'Ubuntu'} hosts</span>
                           </td>
                           <td data-label="Hosts" className="hosts-cell">
                             <HostLinks hosts={g.open} stigId={g.stig_id} />
                             {g.unchecked.length > 0 && (
-                              <p className="muted small unchecked">
+                              <p className="muted unchecked">
                                 Not reviewed on {g.unchecked.map((h) => h.name).slice(0, 4).join(', ')}
                                 {g.unchecked.length > 4 ? ` and ${g.unchecked.length - 4} more` : ''}: not checked, so not counted as open or fixed.
                               </p>
@@ -154,15 +150,15 @@ export default function Findings() {
                 </table>
                 {shown.length > visible.length && (
                   <div className="more-row">
-                    <span className="muted small">Showing {visible.length} of {shown.length}.</span>
-                    <button type="button" className="btn secondary small" onClick={() => setLimit(shown.length)}>
+                    <span className="muted">Showing {visible.length} of {shown.length}.</span>
+                    <button type="button" className="btn secondary" onClick={() => setLimit(shown.length)}>
                       Show all {shown.length} rules
                     </button>
                   </div>
                 )}
               </div>
             ) : <Empty>{data.groups.length ? 'No finding matches these filters.' : 'No host has an open finding in its latest scan.'}</Empty>}
-          </section>
+          </Panel>
         </>
       )}
     </div>

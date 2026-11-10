@@ -12,10 +12,10 @@ export const CAT_SEVERITY = { 'CAT I': 'high', 'CAT II': 'medium', 'CAT III': 'l
 export const STATUSES = ['Open', 'Not_Reviewed', 'NotAFinding', 'Not_Applicable']
 
 export const STATUS_INFO = {
-  Open: { label: 'Open', tone: 'bad', glyph: '✕' },
-  NotAFinding: { label: 'Not a finding', tone: 'good', glyph: '✓' },
-  Not_Applicable: { label: 'Not applicable', tone: 'neutral', glyph: '–' },
-  Not_Reviewed: { label: 'Not reviewed', tone: 'warn', glyph: '?' },
+  Open: { label: 'Open', tone: 'bad' },
+  NotAFinding: { label: 'Not a finding', tone: 'good' },
+  Not_Applicable: { label: 'Not applicable', tone: 'neutral' },
+  Not_Reviewed: { label: 'Not reviewed', tone: 'warn' },
 }
 
 export const OS_LABEL = { linux: 'Ubuntu 22.04 LTS', windows: 'Windows Server 2022' }

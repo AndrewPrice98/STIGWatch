@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { api } from './api.js'
 import { DISCLAIMER, GITHUB_URL } from './lib.js'
 import Fleet from './pages/Fleet.jsx'
@@ -12,49 +12,87 @@ import Drift from './pages/Drift.jsx'
 import Remediation from './pages/Remediation.jsx'
 import Reports from './pages/Reports.jsx'
 import Benchmarks from './pages/Benchmarks.jsx'
+import Logo from './components/Logo.jsx'
 import { Empty, ErrorState, Icon, Loading, SessionContext, usePageTitle, useSession } from './components/ui.jsx'
 
-const NAV = [
-  ['/', 'Fleet'],
-  ['/hosts', 'Hosts'],
-  ['/findings', 'Findings'],
-  ['/drift', 'Drift'],
-  ['/remediation', 'Remediation'],
-  ['/reports', 'Reports'],
-  ['/benchmarks', 'Benchmarks'],
+const NAV_GROUPS = [
+  { label: 'Monitor', items: [
+    ['/', 'Fleet', 'dashboard'],
+    ['/hosts', 'Hosts', 'hosts'],
+    ['/findings', 'Findings', 'findings'],
+    ['/drift', 'Drift', 'drift'],
+  ] },
+  { label: 'Act', items: [
+    ['/remediation', 'Remediation', 'remediation'],
+    ['/reports', 'Reports', 'reports'],
+  ] },
+  { label: 'Reference', items: [
+    ['/benchmarks', 'Benchmarks', 'benchmarks'],
+  ] },
 ]
 
 function Brand() {
   return (
     <NavLink to="/" className="brand" aria-label="STIGWatch, fleet overview">
-      <span className="brand-mark" aria-hidden="true"><Icon name="radar" size={20} /></span>
-      <span className="brand-text">
-        <span className="brand-name">STIGWatch</span>
-        <span className="brand-sub">DISA STIG compliance</span>
-      </span>
+      <Logo size={24} />
+      <span className="brand-name">STIGWatch</span>
     </NavLink>
   )
 }
 
+/** Where the page sits: the section, and for a host or rule page the levels above it. */
+function Breadcrumb() {
+  const { pathname } = useLocation()
+  const parts = pathname.split('/').filter(Boolean)
+  const crumbs = []
+  if (parts.length === 0) crumbs.push({ label: 'Fleet' })
+  else if (parts[0] === 'hosts' && parts.length >= 2) {
+    crumbs.push({ label: 'Hosts', to: '/hosts' })
+    if (parts[2] === 'rules') crumbs.push({ label: 'Host', to: `/hosts/${parts[1]}` }, { label: 'Rule' })
+    else crumbs.push({ label: 'Host' })
+  } else {
+    const found = NAV_GROUPS.flatMap((g) => g.items).find(([to]) => to === `/${parts[0]}`)
+    crumbs.push({ label: found ? found[1] : 'Not found' })
+  }
+  return (
+    <nav className="crumbs" aria-label="Breadcrumb">
+      <ol>
+        {crumbs.map((c, i) => (
+          <li key={c.label} aria-current={i === crumbs.length - 1 ? 'page' : undefined}>
+            {c.to ? <Link to={c.to}>{c.label}</Link> : c.label}
+          </li>
+        ))}
+      </ol>
+    </nav>
+  )
+}
+
 function AccountArea({ onLogout, onSignIn }) {
-  const { user, guest, demo, authConfigured } = useSession()
+  const { user, guest, authConfigured } = useSession()
   if (guest) {
-    return (
-      <div className="account">
-        <span className="badge demo" title="Hosted demo with an invented fleet. Browsing is read-only.">
-          <Icon name="lock" size={14} /> Demo · read-only
-        </span>
-        {authConfigured && (
-          <button type="button" className="btn ghost small" onClick={onSignIn}>Sign in</button>
-        )}
-      </div>
-    )
+    return authConfigured
+      ? <button type="button" className="btn ghost" onClick={onSignIn}>Sign in</button>
+      : null
   }
   return (
     <div className="account">
-      {demo && <span className="badge demo" title="Hosted demo with an invented fleet.">Demo</span>}
       <span className="account-user"><span className="sr-only">Signed in as </span>{user}</span>
-      <button type="button" className="btn ghost small" onClick={onLogout}>Sign out</button>
+      <button type="button" className="btn ghost" onClick={onLogout}>Sign out</button>
+    </div>
+  )
+}
+
+/** The foot of the sidebar: the demo status line and the version. */
+function SideStatus() {
+  const { guest, demo, version } = useSession()
+  return (
+    <div className="side-foot">
+      {(guest || demo) && (
+        <p className="badge demo" title="Hosted demo with an invented fleet. Browsing is read-only.">
+          <i className="dot" aria-hidden="true" />{guest ? 'Demo, read-only' : 'Demo'}
+        </p>
+      )}
+      <p className="side-version">STIGWatch v{version}</p>
     </div>
   )
 }
@@ -85,54 +123,86 @@ function NotFound() {
 }
 
 function Shell({ onLogout, onSignIn }) {
-  const { version } = useSession()
   const mainRef = useRef(null)
+  const menuRef = useRef(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const { pathname } = useLocation()
   useFocusOnNavigate(mainRef)
+  useEffect(() => { setMenuOpen(false) }, [pathname])
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const onKey = (e) => {
+      if (e.key === 'Escape') { setMenuOpen(false); menuRef.current?.focus() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [menuOpen])
+  const closeMenu = () => { setMenuOpen(false); menuRef.current?.focus() }
   return (
     <div className="app">
       <a className="skip-link" href="#main">Skip to content</a>
-      <header className="topbar">
-        <div className="topbar-inner">
+      <div className={`sidebar${menuOpen ? ' open' : ''}`} id="sidebar">
+        <div className="side-top">
           <Brand />
-          <nav className="nav" aria-label="Main">
-            <ul>
-              {NAV.map(([to, label]) => (
-                <li key={to}><NavLink to={to} end={to === '/'}>{label}</NavLink></li>
-              ))}
-            </ul>
-          </nav>
+          <button type="button" className="icon-btn side-close" aria-label="Close menu" onClick={closeMenu}>
+            <Icon name="close" />
+          </button>
+        </div>
+        <nav className="nav" aria-label="Main">
+          {NAV_GROUPS.map((g) => (
+            <div key={g.label} className="nav-group">
+              <p className="nav-label">{g.label}</p>
+              <ul>
+                {g.items.map(([to, label, icon]) => (
+                  <li key={to}>
+                    <NavLink to={to} end={to === '/'}><Icon name={icon} />{label}</NavLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </nav>
+        <SideStatus />
+      </div>
+      {menuOpen && <div className="scrim" onClick={closeMenu} aria-hidden="true" />}
+      <div className="column">
+        <header className="topbar">
+          <button type="button" ref={menuRef} className="icon-btn menu-btn" aria-label="Menu" aria-expanded={menuOpen}
+            aria-controls="sidebar" onClick={() => setMenuOpen((o) => !o)}>
+            <Icon name="menu" />
+          </button>
+          <span className="topbar-brand"><Brand /></span>
+          <Breadcrumb />
           <div className="topbar-right">
-            <a className="gh-link" href={GITHUB_URL} target="_blank" rel="noreferrer">
-              <Icon name="github" size={18} /><span className="gh-text">GitHub</span>
-              <span className="sr-only"> (opens in a new tab)</span>
+            <a className="icon-btn" href={GITHUB_URL} target="_blank" rel="noreferrer" title="Source on GitHub">
+              <Icon name="github" size={16} />
+              <span className="sr-only">Source on GitHub (opens in a new tab)</span>
             </a>
             <AccountArea onLogout={onLogout} onSignIn={onSignIn} />
           </div>
-        </div>
-      </header>
-      <main id="main" className="main" ref={mainRef}>
-        <Routes>
-          <Route path="/" element={<Fleet />} />
-          <Route path="/hosts" element={<Hosts />} />
-          <Route path="/hosts/:hostId" element={<HostDetail />} />
-          <Route path="/hosts/:hostId/rules/:stigId" element={<RuleDetail />} />
-          <Route path="/findings" element={<Findings />} />
-          <Route path="/drift" element={<Drift />} />
-          <Route path="/remediation" element={<Remediation />} />
-          <Route path="/reports" element={<Reports />} />
-          <Route path="/benchmarks" element={<Benchmarks />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </main>
-      <footer className="footer">
-        <div className="footer-inner">
+        </header>
+        <main id="main" className="main" ref={mainRef}>
+          <Routes>
+            <Route path="/" element={<Fleet />} />
+            <Route path="/hosts" element={<Hosts />} />
+            <Route path="/hosts/:hostId" element={<HostDetail />} />
+            <Route path="/hosts/:hostId/rules/:stigId" element={<RuleDetail />} />
+            <Route path="/findings" element={<Findings />} />
+            <Route path="/drift" element={<Drift />} />
+            <Route path="/remediation" element={<Remediation />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/benchmarks" element={<Benchmarks />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </main>
+        <footer className="footer">
           <p className="disclaimer">{DISCLAIMER}</p>
           <p className="footer-meta">
-            STIGWatch v{version} · Ubuntu 22.04 LTS and Windows Server 2022 STIGs · read-only collectors ·{' '}
+            Ubuntu 22.04 LTS and Windows Server 2022 STIGs · read-only collectors ·{' '}
             <a href={GITHUB_URL} target="_blank" rel="noreferrer">Source on GitHub<span className="sr-only"> (opens in a new tab)</span></a>
           </p>
-        </div>
-      </footer>
+        </footer>
+      </div>
     </div>
   )
 }

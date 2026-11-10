@@ -4,7 +4,7 @@ import { plural } from '../lib.js'
 import { Icon } from './ui.jsx'
 
 /** Copy `text` to the clipboard and say so (politely announced). Never throws. */
-export function CopyButton({ text, label = 'Copy', small = true }) {
+export function CopyButton({ text, label = 'Copy' }) {
   const [state, setState] = useState('')
   const timer = useRef(0)
   async function copy() {
@@ -19,8 +19,8 @@ export function CopyButton({ text, label = 'Copy', small = true }) {
   }
   return (
     <span className="copy-wrap">
-      <button type="button" className={`btn secondary${small ? ' small' : ''}`} onClick={copy}>
-        <Icon name="copy" size={15} />{label}
+      <button type="button" className="btn secondary" onClick={copy}>
+        <Icon name="copy" />{label}
       </button>
       <span role="status" className="form-msg good copy-msg">{state}</span>
     </span>
@@ -53,8 +53,8 @@ export function CodeView({ text, lang, label, firstLines = 300 }) {
       </pre>
       {lines.length > shown.length && (
         <div className="more-row">
-          <span className="muted small">Showing the first {shown.length} of {plural(lines.length, 'line')}. The download has the whole file.</span>
-          <button type="button" className="btn secondary small" onClick={() => setAll(true)}>
+          <span className="muted">Showing the first {shown.length} of {plural(lines.length, 'line')}. The download has the whole file.</span>
+          <button type="button" className="btn secondary" onClick={() => setAll(true)}>
             Show all {lines.length} lines
           </button>
         </div>

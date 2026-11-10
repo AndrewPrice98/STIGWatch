@@ -9,7 +9,8 @@ import { UploadScan } from '../components/admin.jsx'
 import { CatBars } from '../components/charts.jsx'
 import { OsTag } from '../components/hosts.jsx'
 import {
-  CatBadge, Empty, ErrorState, Icon, Loading, OpenCount, PageHead, StatusChip, useAsync, usePageTitle, useSession,
+  CatBadge, Empty, ErrorState, Icon, Loading, Notice, OpenCount, PageHead, Panel, StatusChip, useAsync, usePageTitle,
+  useSession,
 } from '../components/ui.jsx'
 import { useUrlFilters } from '../useUrlFilters.js'
 
@@ -22,40 +23,37 @@ function PrivilegeNotice({ host, scan, cat1NotReviewed, onShow }) {
     : 'Run the collector as root (sudo sh collectors/collect-linux.sh)'
   const n = notReviewedCount(scan)
   return (
-    <section className="card notice warn" aria-labelledby="priv-title">
-      <h2 id="priv-title"><Icon name="lock" size={17} /> This scan ran without {host.os === 'windows' ? 'Administrator' : 'root'} rights</h2>
+    <Notice icon="lock" tone="warn" title={`This scan ran without ${host.os === 'windows' ? 'Administrator' : 'root'} rights`}
+      actions={<button type="button" className="btn secondary" onClick={onShow}>Show the Not reviewed results</button>}>
       <p>
         <strong>{plural(n, 'rule')}</strong>{cat1NotReviewed > 0 && <> (including {cat1NotReviewed} CAT I)</>} {n === 1 ? 'is' : 'are'} Not reviewed
         in this scan. Rules that need privileged files or settings could not be decided, so they are <strong>Not reviewed</strong>,
         never Not a finding, and they are excluded from the compliance figure, which therefore covers fewer rules than
         on other hosts. {how} for full coverage.
       </p>
-      <button type="button" className="btn secondary small" onClick={onShow}>Show the Not reviewed results</button>
-    </section>
+    </Notice>
   )
 }
 
 function ScanSummary({ scan, results }) {
   const breakdown = useMemo(() => catBreakdown(results), [results])
   return (
-    <div className="summary-grid">
-      <section className="card" aria-labelledby="summary-title">
+    <div className="panel summary-grid">
+      <section className="summary-col" aria-labelledby="summary-title">
         <h2 id="summary-title">Scan summary</h2>
-        <p className="muted small">Collected {formatDateTime(scan.collected_at)} · benchmark {scan.benchmark_release}</p>
-        <div className="summary-num">
-          <span className="big">{formatPct(scan.compliance)}</span>
-          <span className="muted small">compliance = {COMPLIANCE_DEFINITION}</span>
-        </div>
+        <p className="panel-desc">Collected {formatDateTime(scan.collected_at)} · benchmark {scan.benchmark_release}</p>
+        <p className="kpi-num">{formatPct(scan.compliance)}</p>
+        <p className="kpi-sub">compliance = {COMPLIANCE_DEFINITION}</p>
         <dl className="status-counts">
           {STATUSES.map((s) => (
             <div key={s} className="status-count">
-              <dt><StatusChip status={s} small /></dt>
+              <dt><StatusChip status={s} /></dt>
               <dd>{scan.status[s]}</dd>
             </div>
           ))}
         </dl>
       </section>
-      <section className="card" aria-labelledby="cat-title">
+      <section className="summary-col" aria-labelledby="cat-title">
         <h2 id="cat-title">Results by CAT</h2>
         <CatBars breakdown={breakdown} />
       </section>
@@ -67,13 +65,7 @@ function Timeline({ scans, selectedId, alertsByScan, hostId, search }) {
   const ordered = [...scans].reverse() // oldest first
   const latestId = scans[0]?.id
   return (
-    <section className="card" aria-labelledby="timeline-title">
-      <div className="card-head">
-        <div>
-          <h2 id="timeline-title">Scan timeline</h2>
-          <p className="muted small">Choose a scan to see its results and its drift from the scan before it.</p>
-        </div>
-      </div>
+    <Panel id="timeline" flush title="Scan timeline" desc="Choose a scan to see its results and its drift from the scan before it.">
       <ol className="timeline">
         {ordered.map((s, i) => {
           const alerts = alertsByScan.get(s.id) || []
@@ -91,34 +83,31 @@ function Timeline({ scans, selectedId, alertsByScan, hostId, search }) {
                     <span key={c} className="tl-count"><span className="tl-cat" aria-hidden="true">{c.replace('CAT ', '')}</span><OpenCount n={s.open[c]} cat={c} /></span>
                   ))}
                 </span>
-                {alerts.length > 0 && (
-                  <span className="tl-alert"><Icon name="alert" size={13} /> {plural(alerts.length, 'CAT I regression')}</span>
-                )}
+                {alerts.length > 0 && <span className="tl-alert">{plural(alerts.length, 'CAT I regression')}</span>}
                 {selected && <span className="sr-only"> (selected)</span>}
               </Link>
             </li>
           )
         })}
       </ol>
-    </section>
+    </Panel>
   )
 }
 
 const DRIFT_GROUPS = [
-  ['regressed', 'Regressed', 'bad', 'up', 'Was Not a finding or Not applicable; Open now.'],
-  ['newly_visible_cat1', 'Newly visible CAT I', 'bad', 'eye', 'Not reviewed before, Open now. The finding may be old; it was not visible before.'],
-  ['newly_open', 'Newly open (other CATs)', 'warn', 'eye', 'Not reviewed before, Open now.'],
-  ['lost_visibility', 'Lost visibility', 'warn', 'eyeOff', 'Open before, Not reviewed now. Not known to be fixed: the collector could not check it this time.'],
-  ['fixed', 'Fixed', 'good', 'down', 'Was Open; Not a finding or Not applicable now.'],
+  ['regressed', 'Regressed', 'bad', 'Was Not a finding or Not applicable; Open now.'],
+  ['newly_visible_cat1', 'Newly visible CAT I', 'bad', 'Not reviewed before, Open now. The finding may be old; it was not visible before.'],
+  ['newly_open', 'Newly open (other CATs)', 'warn', 'Not reviewed before, Open now.'],
+  ['lost_visibility', 'Lost visibility', 'warn', 'Open before, Not reviewed now. Not known to be fixed: the collector could not check it this time.'],
+  ['fixed', 'Fixed', 'good', 'Was Open; Not a finding or Not applicable now.'],
 ]
 
 function DriftPanel({ drift, hostId, titles }) {
   if (drift.first_scan) {
     return (
-      <section className="card" id="drift" aria-labelledby="drift-title">
-        <h2 id="drift-title">Drift</h2>
+      <Panel id="drift" title="Drift">
         <p className="muted">This is the host&apos;s first scan, so there is nothing to compare it with.</p>
-      </section>
+      </Panel>
     )
   }
   const groups = {
@@ -127,36 +116,33 @@ function DriftPanel({ drift, hostId, titles }) {
   }
   const total = DRIFT_GROUPS.reduce((n, [key]) => n + (groups[key]?.length || 0), 0)
   return (
-    <section className="card" id="drift" aria-labelledby="drift-title">
-      <div className="card-head">
-        <div>
-          <h2 id="drift-title">Drift since the previous scan</h2>
-          <p className="muted small">
-            Compared by STIG ID with scan #{drift.prev_scan_id}
-            {drift.benchmark_changed && <> (benchmark {drift.prev_release} → {drift.release})</>}.
-            {' '}{plural(total, 'rule')} changed status in a way that needs attention.
-          </p>
-        </div>
-      </div>
+    <Panel id="drift" title="Drift since the previous scan"
+      desc={(
+        <>
+          Compared by STIG ID with scan #{drift.prev_scan_id}
+          {drift.benchmark_changed && <> (benchmark {drift.prev_release} → {drift.release})</>}.
+          {' '}{plural(total, 'rule')} changed status in a way that needs attention.
+        </>
+      )}>
       {total === 0 && (
         <p className="state compact-state">No rule regressed, was fixed, became visible or lost visibility since the previous scan.</p>
       )}
       {total > 0 && (
         <div className="drift-grid">
-          {DRIFT_GROUPS.filter(([key]) => groups[key]?.length).map(([key, label, tone, icon, help]) => {
+          {DRIFT_GROUPS.filter(([key]) => groups[key]?.length).map(([key, label, tone, help]) => {
             const items = groups[key]
             return (
               <div key={key} className={`drift-group ${tone}`}>
-                <h3><Icon name={icon} size={16} /> {label} <span className="drift-n">{items.length}</span></h3>
-                <p className="muted small">{help}</p>
+                <h3><i className="dot" aria-hidden="true" />{label} <span className="drift-n">{items.length}</span></h3>
+                <p className="drift-help">{help}</p>
                 <ul className="drift-list">
                   {items.map((r) => (
                     <li key={r.stig_id}>
                       <CatBadge cat={r.cat} />
                       <Link className="mono" to={ruleLink(hostId, r.stig_id)}>{r.stig_id}</Link>
-                      {titles.get(r.stig_id) && <span className="drift-title">{titles.get(r.stig_id)}</span>}
-                      <span className="drift-change small">
-                        <StatusChip status={r.from} small /><span aria-hidden="true"> → </span><span className="sr-only"> to </span><StatusChip status={r.to} small />
+                      <span className="drift-title">{titles.get(r.stig_id)}</span>
+                      <span className="drift-change">
+                        <StatusChip status={r.from} /><Icon name="arrow" size={13} /><span className="sr-only"> to </span><StatusChip status={r.to} />
                       </span>
                     </li>
                   ))}
@@ -167,19 +153,19 @@ function DriftPanel({ drift, hostId, titles }) {
         </div>
       )}
       <ul className="drift-zero">
-        {DRIFT_GROUPS.filter(([key]) => !groups[key]?.length).map(([key, label, , icon, help]) => (
-          <li key={key} title={help}><Icon name={icon} size={14} /> {label}: <strong>0</strong></li>
+        {DRIFT_GROUPS.filter(([key]) => !groups[key]?.length).map(([key, label, , help]) => (
+          <li key={key} title={help}>{label}: <strong>0</strong></li>
         ))}
       </ul>
       {(drift.other_changes?.length > 0 || drift.new_rules?.length > 0 || drift.removed_rules?.length > 0) && (
-        <p className="muted small drift-foot">
+        <p className="muted drift-foot">
           Also: {plural(drift.other_changes?.length || 0, 'other status change')} (for example Not applicable → Not a finding)
           {drift.new_rules?.length > 0 && <>, {plural(drift.new_rules.length, 'rule')} only in this scan</>}
           {drift.removed_rules?.length > 0 && <>, {plural(drift.removed_rules.length, 'rule')} only in the previous scan</>}.
           {' '}Rules present in only one scan are never counted as fixed or regressed.
         </p>
       )}
-    </section>
+    </Panel>
   )
 }
 
@@ -200,20 +186,14 @@ function ResultsTable({ results, hostId, url }) {
   const visible = shown.slice(0, limit)
 
   return (
-    <section className="card" id="results" aria-labelledby="results-title">
-      <div className="card-head">
-        <div>
-          <h2 id="results-title">Results</h2>
-          <p className="muted small" aria-live="polite">
-            {anyFilter ? `${shown.length} of ${plural(results.length, 'rule')}` : plural(results.length, 'rule')} in this scan
-          </p>
-        </div>
-      </div>
-      <form className="filters inline" role="search" aria-label="Filter results"
+    <Panel id="results" flush live title="Results"
+      desc={`${anyFilter ? `${shown.length} of ${plural(results.length, 'rule')}` : plural(results.length, 'rule')} in this scan`}>
+      <form className="toolbar inset" role="search" aria-label="Filter results"
         onSubmit={(e) => { e.preventDefault(); submitSearch() }}>
-        <label className="field grow">
+        <label className="field grow search">
           <span>Search</span>
-          <input type="search" value={search} maxLength={100} placeholder="STIG ID, title or reason"
+          <Icon name="search" />
+          <input type="search" value={search} maxLength={100} placeholder="Search STIG ID, title or reason"
             onChange={(e) => setSearch(e.target.value)} />
         </label>
         <label className="field">
@@ -231,7 +211,7 @@ function ResultsTable({ results, hostId, url }) {
           </select>
         </label>
         {anyFilter && (
-          <button type="button" className="btn ghost small clear-btn" onClick={clear}>Clear</button>
+          <button type="button" className="btn ghost clear-btn" onClick={clear}>Clear</button>
         )}
       </form>
       {shown.length ? (
@@ -248,7 +228,7 @@ function ResultsTable({ results, hostId, url }) {
             </thead>
             <tbody>
               {visible.map((r) => (
-                <tr key={r.stig_id} className={`st-${r.status}`}>
+                <tr key={r.stig_id}>
                   <th scope="row">
                     <div className="rule-cell">
                       <Link className="mono rule-id" to={ruleLink(hostId, r.stig_id)}>{r.stig_id}</Link>
@@ -256,11 +236,11 @@ function ResultsTable({ results, hostId, url }) {
                     </div>
                   </th>
                   <td data-label="CAT"><CatBadge cat={r.cat} /></td>
-                  <td data-label="Status"><StatusChip status={r.status} small /></td>
+                  <td data-label="Status"><StatusChip status={r.status} /></td>
                   <td data-label="Why" className="reason-cell">
                     <div className="reason-wrap">
                       <span className="reason">{r.reason}</span>
-                      {r.comment && <span className="comment-flag small"><Icon name="edit" size={13} /> Assessor comment</span>}
+                      {r.comment && <span className="comment-flag"><Icon name="edit" size={13} /> Assessor comment</span>}
                     </div>
                   </td>
                 </tr>
@@ -269,15 +249,15 @@ function ResultsTable({ results, hostId, url }) {
           </table>
           {shown.length > visible.length && (
             <div className="more-row">
-              <span className="muted small">Showing {visible.length} of {shown.length}, Open first.</span>
-              <button type="button" className="btn secondary small" onClick={() => setLimit(shown.length)}>
+              <span className="muted">Showing {visible.length} of {shown.length}, Open first.</span>
+              <button type="button" className="btn secondary" onClick={() => setLimit(shown.length)}>
                 Show all {shown.length} results
               </button>
             </div>
           )}
         </div>
       ) : <Empty>No result matches these filters.</Empty>}
-    </section>
+    </Panel>
   )
 }
 
@@ -351,25 +331,25 @@ function HostDetail({ hostId }) {
 
   return (
     <div className="page">
-      <PageHead back={{ to: '/hosts', label: 'All hosts' }} eyebrow={`Host · ${host.benchmark_id}${host.latest_scan ? ` ${host.latest_scan.benchmark_release}` : ''}`}
-        title={host.name}
+      <PageHead back={{ to: '/hosts', label: 'All hosts' }} title={host.name}
         actions={selected && (
           <div className="exports" role="group" aria-label="Exports">
-            <span className="exports-label muted small">Exports{isLatest ? '' : ` (scan of ${formatDate(selected.collected_at)})`}</span>
-            <a className="btn secondary small" href={api.cklUrl(selected.id)} download><Icon name="download" size={15} />Checklist .ckl</a>
-            <a className="btn secondary small" href={api.cklbUrl(selected.id)} download><Icon name="download" size={15} />.cklb</a>
+            <span className="exports-label">Exports{isLatest ? '' : ` (scan of ${formatDate(selected.collected_at)})`}</span>
+            <a className="btn secondary" href={api.cklUrl(selected.id)} download><Icon name="download" />Checklist .ckl</a>
+            <a className="btn secondary" href={api.cklbUrl(selected.id)} download><Icon name="download" />.cklb</a>
             {isLatest && host.status.Open > 0 && (
-              <a className="btn secondary small" href={api.remediationUrl(host.id)} download>
-                <Icon name="download" size={15} />Remediation {host.os === 'windows' ? '.ps1' : '.yml'}
+              <a className="btn secondary" href={api.remediationUrl(host.id)} download>
+                <Icon name="download" />Remediation {host.os === 'windows' ? '.ps1' : '.yml'}
               </a>
             )}
           </div>
         )}>
         <div className="host-meta">
           <OsTag os={host.os} />
-          {host.environment && <span className={`env ${host.environment.toLowerCase()}`}>{host.environment}</span>}
-          {host.owner && <span className="muted">Owner: {host.owner}</span>}
-          <span className="muted">{plural(host.scan_count, 'scan')}</span>
+          <span>{host.benchmark_id}{host.latest_scan ? ` ${host.latest_scan.benchmark_release}` : ''}</span>
+          {host.environment && <span>{host.environment}</span>}
+          {host.owner && <span>Owner: {host.owner}</span>}
+          <span>{plural(host.scan_count, 'scan')}</span>
           {host.tags?.length > 0 && (
             <ul className="tags" aria-label="Tags">{host.tags.map((t) => <li key={t}>{t}</li>)}</ul>
           )}
@@ -404,11 +384,11 @@ function HostDetail({ hostId }) {
             </>
           )}
           {!guest && (
-            <section className="card" aria-label="Upload a scan for this host">
+            <section className="panel" aria-label="Upload a scan for this host">
               <UploadScan hostId={host.id} heading={`Upload a scan for ${host.name}`} onDone={base.reload} />
             </section>
           )}
-          {guest && <p className="muted small read-only-note"><Icon name="lock" size={13} /> Read-only demo: assessor comments are shown but only an admin can edit them.</p>}
+          {guest && <p className="muted read-only-note"><Icon name="lock" size={13} /> Read-only demo: assessor comments are shown but only an admin can edit them.</p>}
         </>
       )}
     </div>

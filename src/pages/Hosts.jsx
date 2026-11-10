@@ -3,7 +3,7 @@ import { api } from '../api.js'
 import { HOST_SORTS, OS_LABEL, environments, filterHosts, plural, sortHosts } from '../lib.js'
 import { AdminTools, NoData } from '../components/admin.jsx'
 import { HostTable } from '../components/hosts.jsx'
-import { Empty, ErrorState, Loading, PageHead, useAsync, usePageTitle } from '../components/ui.jsx'
+import { Empty, ErrorState, Icon, Loading, PageHead, Panel, useAsync, usePageTitle } from '../components/ui.jsx'
 import { useUrlFilters } from '../useUrlFilters.js'
 
 const SORT_KEYS = Object.keys(HOST_SORTS)
@@ -28,28 +28,27 @@ export default function Hosts() {
 
   return (
     <div className="page">
-      <PageHead eyebrow="Inventory" title="Hosts">
-        <p className="lede">Every scanned host with the open findings, compliance and coverage of its latest scan.</p>
-      </PageHead>
+      <PageHead title="Hosts" sub="Every scanned host with the open findings, compliance and coverage of its latest scan." />
 
-      {(!data || data.length > 0) && <form className="filters card" role="search" aria-label="Filter hosts"
+      {(!data || data.length > 0) && <form className="toolbar" role="search" aria-label="Filter hosts"
         onSubmit={(e) => { e.preventDefault(); submitSearch() }}>
-        <label className="field grow">
+        <label className="field grow search">
           <span>Search</span>
-          <input type="search" value={search} maxLength={100} placeholder="Name, owner or tag"
+          <Icon name="search" />
+          <input type="search" value={search} maxLength={100} placeholder="Search name, owner or tag"
             onChange={(e) => setSearch(e.target.value)} />
         </label>
         <label className="field">
           <span>Operating system</span>
           <select value={filters.os} onChange={(e) => update({ os: e.target.value })}>
-            <option value="">All</option>
+            <option value="">All operating systems</option>
             {Object.entries(OS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </label>
         <label className="field">
           <span>Environment</span>
           <select value={filters.environment} onChange={(e) => update({ environment: e.target.value })}>
-            <option value="">All</option>
+            <option value="">All environments</option>
             {envs.map((e) => <option key={e} value={e}>{e}</option>)}
           </select>
         </label>
@@ -69,19 +68,13 @@ export default function Hosts() {
       {error && <ErrorState error={error} onRetry={reload} />}
       {data && data.length === 0 && <NoData onChanged={reload} />}
       {data && data.length > 0 && (
-        <section className="card" aria-labelledby="hosts-count">
-          <div className="card-head">
-            <h2 id="hosts-count" aria-live="polite">
-              {anyFilter ? `${shown.length} of ${plural(data.length, 'host')}` : plural(data.length, 'host')}
-            </h2>
-            {anyFilter && (
-              <button type="button" className="btn ghost small" onClick={clear}>Clear filters</button>
-            )}
-          </div>
+        <Panel id="hosts-count" flush live
+          title={anyFilter ? `${shown.length} of ${plural(data.length, 'host')}` : plural(data.length, 'host')}
+          actions={anyFilter && <button type="button" className="btn ghost" onClick={clear}>Clear filters</button>}>
           {shown.length
             ? <HostTable hosts={shown} caption="Hosts" />
             : <Empty>No host matches these filters.</Empty>}
-        </section>
+        </Panel>
       )}
       {data && data.length > 0 && <AdminTools onChanged={reload} />}
     </div>

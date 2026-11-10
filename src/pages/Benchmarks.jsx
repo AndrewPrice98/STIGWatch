@@ -1,6 +1,6 @@
 import { api } from '../api.js'
 import { CommandBlock } from '../components/code.jsx'
-import { CatBadge, ErrorState, Icon, Loading, PageHead, useAsync, usePageTitle } from '../components/ui.jsx'
+import { About, CatBadge, ErrorState, Icon, Loading, PageHead, Panel, useAsync, usePageTitle } from '../components/ui.jsx'
 import { CATS, COLLECTOR_STEPS, formatDate, plural } from '../lib.js'
 
 async function loadBenchmarks() {
@@ -15,7 +15,7 @@ const pct = (n, total) => (total ? Math.round((100 * n) / total) : 0)
 
 function CoverageTable({ b }) {
   const cov = b.coverage
-  if (!cov) return <p className="muted">STIGWatch has no automated checks for this benchmark; every rule is a manual review.</p>
+  if (!cov) return <p className="muted pad">STIGWatch has no automated checks for this benchmark; every rule is a manual review.</p>
   const totals = CATS.reduce((t, c) => {
     const row = cov.by_cat[c] || {}
     for (const k of ['total', 'automated', 'full', 'partial', 'evidence', 'manual']) t[k] += row[k] || 0
@@ -43,7 +43,7 @@ function CoverageTable({ b }) {
               <td data-label="Automated" className="num">
                 {r.automated}
                 {r.automated > 0 && (
-                  <span className="muted small"> ({r.full} full{r.partial ? `, ${r.partial} partial` : ''}{r.evidence ? `, ${r.evidence} evidence` : ''})</span>
+                  <span className="muted"> ({r.full} full{r.partial ? `, ${r.partial} partial` : ''}{r.evidence ? `, ${r.evidence} evidence` : ''})</span>
                 )}
               </td>
               <td data-label="Manual" className="num">{r.manual}</td>
@@ -61,64 +61,48 @@ function CoverageTable({ b }) {
   )
 }
 
-function BenchmarkCard({ b }) {
+function BenchmarkPanel({ b }) {
   return (
-    <section className="card" aria-labelledby={`bm-${b.id}`}>
-      <div className="card-head">
-        <div>
-          <h2 id={`bm-${b.id}`}>{b.title}</h2>
-          <p className="muted small">
-            Version {b.version}, release {b.release} ({b.label}) · benchmark date {formatDate(b.date)} · {plural(b.rules, 'rule')}
-            {b.metadata_only && ' · metadata only'}
-          </p>
-        </div>
-        {b.source_url && (
-          <a className="btn ghost small" href={b.source_url} target="_blank" rel="noreferrer noopener">
-            <Icon name="external" size={15} />DISA package<span className="sr-only"> (opens in a new tab)</span>
-          </a>
-        )}
-      </div>
+    <Panel id={`bm-${b.id}`} flush title={b.title}
+      desc={`Version ${b.version}, release ${b.release} (${b.label}) · benchmark date ${formatDate(b.date)} · ${plural(b.rules, 'rule')}${b.metadata_only ? ' · metadata only' : ''}`}
+      actions={b.source_url && (
+        <a className="btn ghost" href={b.source_url} target="_blank" rel="noreferrer noopener">
+          <Icon name="external" />DISA package<span className="sr-only"> (opens in a new tab)</span>
+        </a>
+      )}>
       <ul className="cat-counts" aria-label="Rules by severity">
         {CATS.map((c) => <li key={c}><CatBadge cat={c} /> <strong>{b.severity?.[c] ?? 0}</strong></li>)}
       </ul>
       <h3 className="sub-title">Coverage: automated and manual rules</h3>
       <CoverageTable b={b} />
-      <p className="muted small cov-legend">
+      <p className="muted cov-legend">
         <strong>Full</strong>: the check can return both Open and Not a finding. <strong>Partial</strong>: it can
         return only one of them; the other outcome stays Not reviewed. <strong>Evidence</strong>: facts are collected for
         the assessor, who decides. <strong>Manual</strong>: no automated check, always Not reviewed.
       </p>
-    </section>
+    </Panel>
   )
 }
 
 function Collectors() {
   return (
-    <section className="card" aria-labelledby="collectors-title">
-      <div className="card-head">
-        <div>
-          <h2 id="collectors-title">Collector instructions</h2>
-          <p className="muted small">
-            A collector is a read-only script. It changes no setting and writes one JSON file, which an admin uploads.
-            It never sends anything over the network.
-          </p>
-        </div>
-      </div>
+    <Panel id="collectors" title="Collector instructions"
+      desc="A collector is a read-only script. It changes no setting and writes one JSON file, which an admin uploads. It never sends anything over the network.">
       <div className="collector-grid">
         {Object.entries(COLLECTOR_STEPS).map(([os, c]) => (
           <div key={os} className="collector">
             <h3>{c.title}</h3>
-            <p className="muted small">Script: <code>{c.file}</code> in the STIGWatch repository.</p>
+            <p className="muted">Script: <code>{c.file}</code> in the STIGWatch repository.</p>
             <CommandBlock commands={c.commands} label={`${c.title} collector commands`} />
-            <p className="small">{c.note}</p>
+            <p>{c.note}</p>
           </div>
         ))}
       </div>
-      <p className="muted small">
+      <p className="muted collector-foot">
         Then upload the file from the Hosts page (admin sign-in required). Scans are compared by STIG ID, so run the
         collector on the same schedule, for example weekly, to see drift.
       </p>
-    </section>
+    </Panel>
   )
 }
 
@@ -127,15 +111,17 @@ export default function Benchmarks() {
   const { data, error, loading, reload } = useAsync(loadBenchmarks, [])
   return (
     <div className="page">
-      <PageHead eyebrow="DISA STIG catalogs" title="Benchmarks">
-        <p className="lede">
-          The DISA STIG releases STIGWatch checks against, and how much of each it can decide on its own.
-          Automated means the rule is decided from collected facts; the rest stay Not reviewed for a person to assess.
-        </p>
+      <PageHead title="Benchmarks" sub="The DISA STIG releases STIGWatch checks against, and how much of each it can decide on its own.">
+        <About>
+          <p>
+            Automated means the rule is decided from collected facts; the rest stay Not reviewed for a person to assess.
+            STIG rule text is DISA content, reproduced unmodified apart from whitespace; STIGWatch is not a DISA product.
+          </p>
+        </About>
       </PageHead>
       {loading && !data && <Loading label="Loading benchmarks…" />}
       {error && <ErrorState error={error} onRetry={reload} />}
-      {data && data.map((b) => <BenchmarkCard key={b.id} b={b} />)}
+      {data && data.map((b) => <BenchmarkPanel key={b.id} b={b} />)}
       <Collectors />
     </div>
   )

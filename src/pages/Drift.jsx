@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api.js'
 import { NoData } from '../components/admin.jsx'
 import {
-  CatBadge, Empty, ErrorState, Icon, Loading, OpenCount, PageHead, StatusChip, useAsync, usePageTitle,
+  About, CatBadge, Empty, ErrorState, Icon, Loading, Notice, OpenCount, PageHead, Panel, StatusChip, useAsync, usePageTitle,
 } from '../components/ui.jsx'
 import { loadHostScans, mapLimit } from '../data.js'
 import {
@@ -35,6 +35,15 @@ async function loadWeek(week) {
   return { merged, titles }
 }
 
+/** "Not a finding to Open": two statuses with an arrow between them. */
+function StatusChange({ from, to }) {
+  return (
+    <span className="drift-change">
+      <StatusChip status={from} /><Icon name="arrow" size={13} /><span className="sr-only"> to </span><StatusChip status={to} />
+    </span>
+  )
+}
+
 function AlertList({ alerts: unsorted, weekByScan }) {
   const [all, setAll] = useState(false)
   // The API returns each alert with the collected_at of its scan; list the newest scan first.
@@ -46,26 +55,41 @@ function AlertList({ alerts: unsorted, weekByScan }) {
   if (!alerts.length) return <Empty>No CAT I regression has been raised: no CAT I rule went from closed to Open between two scans.</Empty>
   return (
     <>
-      <ul className="alert-list">
-        {shown.map((a) => {
-          const from = alertFrom(a)
-          const w = weekByScan.get(a.scan_id)
-          return (
-            <li key={a.id} className="alert-item">
-              <CatBadge cat="CAT I" />
-              <Link className="mono" to={ruleLink(a.host_id, a.stig_id)}>{a.stig_id}</Link>
-              <span>on <Link to={`/hosts/${a.host_id}`}>{a.host_name}</Link></span>
-              {from && <span className="drift-change small"><StatusChip status={from} small /><span aria-hidden="true"> → </span><span className="sr-only"> to </span><StatusChip status="Open" small /></span>}
-              {w && <span className="muted small">week {w.n}, {formatDate(w.week, { withYear: false })}</span>}
-              <Link className="small" to={`/hosts/${a.host_id}?scan=${a.scan_id}#drift`}>Drift on {a.host_name}</Link>
-            </li>
-          )
-        })}
-      </ul>
+      <div className="table-wrap">
+        <table className="table cards">
+          <caption className="sr-only">CAT I regression alerts, newest first</caption>
+          <thead>
+            <tr>
+              <th scope="col">Rule</th>
+              <th scope="col">Host</th>
+              <th scope="col">Change</th>
+              <th scope="col">Week</th>
+              <th scope="col"><span className="sr-only">Drift</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((a) => {
+              const from = alertFrom(a)
+              const w = weekByScan.get(a.scan_id)
+              return (
+                <tr key={a.id}>
+                  <th scope="row"><Link className="mono" to={ruleLink(a.host_id, a.stig_id)}>{a.stig_id}</Link></th>
+                  <td data-label="Host"><Link to={`/hosts/${a.host_id}`}>{a.host_name}</Link></td>
+                  <td data-label="Change">{from && <StatusChange from={from} to="Open" />}</td>
+                  <td data-label="Week" className="date-cell">{w ? `Week ${w.n}, ${formatDate(w.week, { withYear: false })}` : ''}</td>
+                  <td data-label="Drift" className="end-cell">
+                    <Link to={`/hosts/${a.host_id}?scan=${a.scan_id}#drift`}>Drift on {a.host_name}</Link>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
       {alerts.length > shown.length && (
         <div className="more-row">
-          <span className="muted small">Showing {shown.length} of {alerts.length}, newest first.</span>
-          <button type="button" className="btn secondary small" onClick={() => setAll(true)}>Show all {alerts.length}</button>
+          <span className="muted">Showing {shown.length} of {alerts.length}, newest first.</span>
+          <button type="button" className="btn secondary" onClick={() => setAll(true)}>Show all {alerts.length}</button>
         </div>
       )}
     </>
@@ -82,14 +106,13 @@ function Timeline({ weeks, selected }) {
           <li key={w.week} className={`tl-item${sel ? ' selected' : ''}${w.alerts.length ? ' alerted' : ''}`}>
             <Link to={`?week=${w.week}`} replace className="tl-link" aria-current={sel ? 'true' : undefined}>
               <span className="tl-week">Week {w.n}{w.week === last && <span className="tl-latest"> · latest</span>}</span>
-              <span className="tl-date">{formatDate(w.week, { withYear: false })}</span>
+              <span className="tl-date">{formatDate(w.week, { withYear: false })} · {plural(w.scans.length, 'scan')}</span>
               <span className="tl-counts">
                 {CATS.map((c) => (
                   <span key={c} className="tl-count"><span className="tl-cat" aria-hidden="true">{c.replace('CAT ', '')}</span><OpenCount n={w.open?.[c] ?? 0} cat={c} /></span>
                 ))}
               </span>
-              <span className="tl-sub small muted">{plural(w.scans.length, 'scan')}</span>
-              {w.alerts.length > 0 && <span className="tl-alert"><Icon name="alert" size={13} /> {plural(w.alerts.length, 'CAT I regression')}</span>}
+              {w.alerts.length > 0 && <span className="tl-alert">{plural(w.alerts.length, 'CAT I regression')}</span>}
               {sel && <span className="sr-only"> (selected)</span>}
             </Link>
           </li>
@@ -108,40 +131,39 @@ function WeekDetail({ week }) {
   const { data, error, loading, reload } = useAsync(() => loadWeek(week), [week.week])
   const lostFor = useMemo(() => lostByScan(data?.merged), [data])
   return (
-    <section className="card" id="week" aria-labelledby="week-title">
-      <div className="card-head">
-        <div>
-          <h2 id="week-title">Week {week.n}: week of {formatDate(week.week)}</h2>
-          <p className="muted small">
-            {plural(week.scans.length, 'scan')} collected. Each is compared by STIG ID with the same host&apos;s previous scan.
-            {week.change && <> Fleet open findings vs the week before:{' '}
-              {CATS.map((c) => <span key={c} className="wk-change">{c} <Change value={week.change[c]} lost={week.lost?.[c] ?? 0} /></span>)}</>}
-          </p>
-        </div>
-      </div>
+    <Panel id="week" title={`Week ${week.n}: week of ${formatDate(week.week)}`}
+      desc={(
+        <>
+          {plural(week.scans.length, 'scan')} collected. Each is compared by STIG ID with the same host&apos;s previous scan.
+          {week.change && <> Fleet open findings vs the week before:{' '}
+            {CATS.map((c) => <span key={c} className="wk-change">{c} <Change value={week.change[c]} lost={week.lost?.[c] ?? 0} /></span>)}</>}
+        </>
+      )}>
       {loading && !data && <Loading label="Loading the week's drift…" />}
       {error && <ErrorState error={error} onRetry={reload} />}
       {data && <DriftGroups data={data} week={week} />}
       {week.scans.length > 0 && (
-        <details className="week-hosts">
+        <details className="disclosure week-hosts">
           <summary>Net change in open findings per host</summary>
-          <table className="table compact cards">
-            <caption className="sr-only">Net change in open findings per host this week</caption>
-            <thead><tr><th scope="col">Host</th>{CATS.map((c) => <th key={c} scope="col" className="num">{c}</th>)}</tr></thead>
-            <tbody>
-              {week.scans.map((s) => (
-                <tr key={s.id}>
-                  <th scope="row"><Link className="host-link" to={`/hosts/${s.host_id}?scan=${s.id}#drift`}>{s.host_name}</Link></th>
-                  {s.change
-                    ? CATS.map((c) => <td key={c} data-label={c} className="num"><Change value={s.change[c]} lost={lostFor.get(s.id)?.[c] ?? 0} />{s.change[c] === 0 && <span className="muted">0</span>}</td>)
-                    : <td colSpan={3} className="muted">First scan of this host</td>}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-wrap">
+            <table className="table compact cards">
+              <caption className="sr-only">Net change in open findings per host this week</caption>
+              <thead><tr><th scope="col">Host</th>{CATS.map((c) => <th key={c} scope="col" className="num">{c}</th>)}</tr></thead>
+              <tbody>
+                {week.scans.map((s) => (
+                  <tr key={s.id}>
+                    <th scope="row"><Link className="host-link" to={`/hosts/${s.host_id}?scan=${s.id}#drift`}>{s.host_name}</Link></th>
+                    {s.change
+                      ? CATS.map((c) => <td key={c} data-label={c} className="num"><Change value={s.change[c]} lost={lostFor.get(s.id)?.[c] ?? 0} />{s.change[c] === 0 && <span className="muted">0</span>}</td>)
+                      : <td colSpan={3} className="muted">First scan of this host</td>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </details>
       )}
-    </section>
+    </Panel>
   )
 }
 
@@ -161,8 +183,8 @@ function DriftGroups({ data, week }) {
         <div className="drift-grid">
           {DRIFT_KINDS.filter((k) => merged[k.id].length).map((k) => (
             <div key={k.id} className={`drift-group ${k.tone}`}>
-              <h3><Icon name={k.icon} size={16} /> {k.label} <span className="drift-n">{merged[k.id].length}</span></h3>
-              <p className="muted small">{k.help}</p>
+              <h3><i className="dot" aria-hidden="true" />{k.label} <span className="drift-n">{merged[k.id].length}</span></h3>
+              <p className="drift-help">{k.help}</p>
               <ul className="drift-list">
                 {merged[k.id].map((r) => {
                   const title = titles.get(`${r.scan_id}:${r.stig_id}`)
@@ -170,11 +192,9 @@ function DriftGroups({ data, week }) {
                     <li key={`${r.scan_id}-${r.stig_id}`}>
                       <CatBadge cat={r.cat} />
                       <Link className="mono" to={ruleLink(r.host_id, r.stig_id)}>{r.stig_id}</Link>
-                      <span className="muted small">on <Link to={`/hosts/${r.host_id}?scan=${r.scan_id}#drift`}>{r.host_name}</Link></span>
-                      {title && <span className="drift-title">{title}</span>}
-                      <span className="drift-change small">
-                        <StatusChip status={r.from} small /><span aria-hidden="true"> → </span><span className="sr-only"> to </span><StatusChip status={r.to} small />
-                      </span>
+                      <span className="drift-host muted">on <Link to={`/hosts/${r.host_id}?scan=${r.scan_id}#drift`}>{r.host_name}</Link></span>
+                      <span className="drift-title">{title}</span>
+                      <StatusChange from={r.from} to={r.to} />
                     </li>
                   )
                 })}
@@ -185,10 +205,10 @@ function DriftGroups({ data, week }) {
       )}
       <ul className="drift-zero">
         {DRIFT_KINDS.filter((k) => !merged[k.id].length).map((k) => (
-          <li key={k.id} title={k.help}><Icon name={k.icon} size={14} /> {k.label}: <strong>0</strong></li>
+          <li key={k.id} title={k.help}>{k.label}: <strong>0</strong></li>
         ))}
       </ul>
-      <p className="muted small drift-foot">
+      <p className="muted drift-foot">
         Lost visibility is never counted as fixed: the rule is Not reviewed now, so nobody knows whether it is still open.
       </p>
     </>
@@ -216,11 +236,13 @@ export default function Drift() {
 
   return (
     <div className="page">
-      <PageHead eyebrow="Change between scans" title="Drift">
-        <p className="lede">
-          What changed across the fleet from one weekly scan to the next. Rules are matched by STIG ID, so a new
-          benchmark release does not hide a change. CAT I regressions are raised as alerts.
-        </p>
+      <PageHead title="Drift" sub="What changed across the fleet from one weekly scan to the next.">
+        <About>
+          <p>
+            Rules are matched by STIG ID, so a new benchmark release does not hide a change. CAT I regressions are
+            raised as alerts.
+          </p>
+        </About>
       </PageHead>
 
       {loading && !data && <Loading label="Loading the fleet timeline…" />}
@@ -228,21 +250,14 @@ export default function Drift() {
       {data && data.hosts.length === 0 && <NoData onChanged={reload} />}
       {data && data.hosts.length > 0 && (
         <>
-          <section className="card notice" aria-labelledby="alerts-title">
-            <div className="card-head">
-              <div>
-                <h2 id="alerts-title"><Icon name="alert" size={17} /> CAT I regression alerts</h2>
-                <p className="muted small">A CAT I rule that was Not a finding or Not applicable in a host&apos;s previous scan and is Open now.</p>
-              </div>
-              <span className="count-pill">{data.alerts.length}</span>
-            </div>
+          <Panel id="alerts" flush title={`CAT I regression alerts · ${data.alerts.length}`}
+            desc="A CAT I rule that was Not a finding or Not applicable in a host's previous scan and is Open now.">
             <AlertList alerts={data.alerts} weekByScan={weekByScan} />
-          </section>
+          </Panel>
 
           {data.fleet.newly_visible_cat1?.length > 0 && (
-            <section className="card notice warn" aria-labelledby="nv-title">
-              <h2 id="nv-title"><Icon name="eye" size={17} /> CAT I findings that became visible</h2>
-              <p className="small">These were Not reviewed in the previous scan and are Open in the latest. The finding may be old; it was not visible before.</p>
+            <Notice icon="eye" tone="warn" title="CAT I findings that became visible">
+              <p>These were Not reviewed in the previous scan and are Open in the latest. The finding may be old; it was not visible before.</p>
               <ul className="plain-list">
                 {data.fleet.newly_visible_cat1.map((r) => (
                   <li key={`${r.host_id}-${r.stig_id}`}>
@@ -250,18 +265,13 @@ export default function Drift() {
                   </li>
                 ))}
               </ul>
-            </section>
+            </Notice>
           )}
 
-          <section className="card" aria-labelledby="timeline-title">
-            <div className="card-head">
-              <div>
-                <h2 id="timeline-title">Fleet timeline</h2>
-                <p className="muted small">Open findings per week across all hosts (each host&apos;s latest scan up to that week). Choose a week to see what changed.</p>
-              </div>
-            </div>
+          <Panel id="timeline" flush title="Fleet timeline"
+            desc="Open findings per week across all hosts (each host's latest scan up to that week). Choose a week to see what changed.">
             <Timeline weeks={weeks} selected={selectedKey} />
-          </section>
+          </Panel>
 
           {selected ? <WeekDetail key={selected.week} week={selected} /> : <Empty>No weekly scans yet.</Empty>}
         </>

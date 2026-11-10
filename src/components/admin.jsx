@@ -2,7 +2,7 @@ import { useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api.js'
 import { COLLECTOR_STEPS, OS_LABEL, formatBytes, formatPct, plural, writeErrorMessage } from '../lib.js'
-import { Icon, useSession } from './ui.jsx'
+import { Icon, Panel, useSession } from './ui.jsx'
 
 const HOST_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$/
 
@@ -12,7 +12,7 @@ export const DEMO_WRITE_NOTICE = 'Demo: changes you make are visible to other vi
 export function DemoWriteNotice() {
   const { demo, guest } = useSession()
   if (!demo || guest) return null
-  return <p className="notice-inline small" role="note"><Icon name="info" size={13} /> {DEMO_WRITE_NOTICE}</p>
+  return <p className="notice-inline" role="note"><Icon name="info" size={13} /> {DEMO_WRITE_NOTICE}</p>
 }
 
 /** Upload one collector JSON file. For writers only; the server enforces that with a 403. */
@@ -51,8 +51,8 @@ export function UploadScan({ hostId, onDone, heading = 'Upload a scan' }) {
 
   return (
     <form className="admin-form" onSubmit={submit} aria-labelledby={`${id}-h`}>
-      <h3 id={`${id}-h`}><Icon name="upload" size={16} /> {heading}</h3>
-      <p className="muted small">
+      <h3 id={`${id}-h`}>{heading}</h3>
+      <p className="muted">
         Choose the JSON file a STIGWatch collector wrote. {hostId
           ? 'It must come from this host.'
           : 'The host is matched by the name inside the file, and created if it is new.'}
@@ -62,11 +62,11 @@ export function UploadScan({ hostId, onDone, heading = 'Upload a scan' }) {
         <input ref={input} type="file" accept=".json,application/json"
           onChange={(e) => { setFile(e.target.files?.[0] || null); setError(''); setDone(null) }} />
       </label>
-      {file && <p className="muted small">{file.name} · {formatBytes(file.size)}</p>}
+      {file && <p className="muted">{file.name} · {formatBytes(file.size)}</p>}
       <DemoWriteNotice />
       <div className="form-row">
-        <button type="submit" className="btn primary small" aria-disabled={busy ? 'true' : undefined}>
-          {busy ? 'Uploading…' : 'Upload scan'}
+        <button type="submit" className="btn primary" aria-disabled={busy ? 'true' : undefined}>
+          <Icon name="upload" />{busy ? 'Uploading…' : 'Upload scan'}
         </button>
       </div>
       <div aria-live="polite">
@@ -119,7 +119,7 @@ export function AddHost({ onDone }) {
 
   return (
     <form className="admin-form" onSubmit={submit} aria-labelledby={`${id}-h`}>
-      <h3 id={`${id}-h`}><Icon name="plus" size={16} /> Add a host</h3>
+      <h3 id={`${id}-h`}>Add a host</h3>
       <DemoWriteNotice />
       <div className="form-grid">
         <label className="field">
@@ -141,13 +141,13 @@ export function AddHost({ onDone }) {
           <input type="text" value={form.owner} maxLength={100} onChange={set('owner')} />
         </label>
         <label className="field wide">
-          <span>Tags <span className="muted small">(comma separated)</span></span>
+          <span>Tags <span className="muted">(comma separated)</span></span>
           <input type="text" value={form.tags} onChange={set('tags')} />
         </label>
       </div>
       <div className="form-row">
-        <button type="submit" className="btn primary small" aria-disabled={busy ? 'true' : undefined}>
-          {busy ? 'Adding…' : 'Add host'}
+        <button type="submit" className="btn primary" aria-disabled={busy ? 'true' : undefined}>
+          <Icon name="plus" />{busy ? 'Adding…' : 'Add host'}
         </button>
       </div>
       <div aria-live="polite">
@@ -163,18 +163,13 @@ export function AdminTools({ onChanged }) {
   const { guest } = useSession()
   if (guest) return null
   return (
-    <section className="card" aria-labelledby="admin-title">
-      <div className="card-head">
-        <div>
-          <h2 id="admin-title">Admin tools</h2>
-          <p className="muted small">Visible only when signed in as admin. Collectors never connect to STIGWatch: you upload their output.</p>
-        </div>
-      </div>
+    <Panel id="admin" title="Admin tools"
+      desc="Visible only when signed in as admin. Collectors never connect to STIGWatch: you upload their output.">
       <div className="admin-grid">
         <UploadScan onDone={onChanged} />
         <AddHost onDone={onChanged} />
       </div>
-    </section>
+    </Panel>
   )
 }
 
@@ -182,8 +177,7 @@ export function AdminTools({ onChanged }) {
 export function NoData({ onChanged }) {
   const { guest } = useSession()
   return (
-    <section className="card no-data" aria-labelledby="nodata-title">
-      <h2 id="nodata-title"><Icon name="radar" size={18} /> Run a collector and upload a scan to begin</h2>
+    <Panel id="nodata" title="Run a collector and upload a scan to begin" className="no-data">
       <p>
         STIGWatch has no scans yet. A collector is a read-only script you run on a host; it writes one JSON file
         that you upload here. The <Link to="/benchmarks">Benchmarks</Link> page has the commands for Ubuntu and Windows.
@@ -194,6 +188,6 @@ export function NoData({ onChanged }) {
         <li>Come back after the next weekly scan to see what changed.</li>
       </ol>
       {!guest && <div className="admin-grid"><UploadScan onDone={onChanged} /><AddHost onDone={onChanged} /></div>}
-    </section>
+    </Panel>
   )
 }

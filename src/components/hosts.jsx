@@ -1,17 +1,13 @@
 import { Link } from 'react-router-dom'
 import { CATS, OS_LABEL, formatDate, formatPct } from '../lib.js'
-import { Icon, OpenCount } from './ui.jsx'
+import { OpenCount } from './ui.jsx'
 
 export function OsTag({ os }) {
-  return (
-    <span className={`os-tag ${os}`}>
-      <Icon name="server" size={14} />{OS_LABEL[os] || os}
-    </span>
-  )
+  return <span className="os-tag">{OS_LABEL[os] || os}</span>
 }
 
 /**
- * Hosts with their latest-scan numbers. On narrow screens each row becomes a card
+ * Hosts with their latest-scan numbers. On narrow screens each row becomes a stacked block
  * (the cells carry data-label for that layout).
  */
 export function HostTable({ hosts, caption, showOwner = true, showScans = true }) {
@@ -22,7 +18,9 @@ export function HostTable({ hosts, caption, showOwner = true, showScans = true }
         <thead>
           <tr>
             <th scope="col">Host</th>
-            {showOwner && <th scope="col">Environment · owner</th>}
+            <th scope="col">System</th>
+            {showOwner && <th scope="col">Environment</th>}
+            {showOwner && <th scope="col">Owner</th>}
             {CATS.map((c) => <th key={c} scope="col" className="num">{c}<span className="sr-only"> open</span></th>)}
             <th scope="col" className="num">Compliance</th>
             <th scope="col" className="num">Not reviewed</th>
@@ -31,21 +29,13 @@ export function HostTable({ hosts, caption, showOwner = true, showScans = true }
         </thead>
         <tbody>
           {hosts.map((h) => (
-            <tr key={h.id} className={h.open?.['CAT I'] ? 'has-cat1' : ''}>
+            <tr key={h.id}>
               <th scope="row">
-                <div className="host-cell">
-                  <Link to={`/hosts/${h.id}`} className="host-link">{h.name}</Link>
-                  <OsTag os={h.os} />
-                </div>
+                <Link to={`/hosts/${h.id}`} className="host-link">{h.name}</Link>
               </th>
-              {showOwner && (
-                <td data-label="Environment">
-                  <div className="env-cell">
-                    <span className={`env ${String(h.environment).toLowerCase()}`}>{h.environment || '—'}</span>
-                    <span className="muted small owner">{h.owner}</span>
-                  </div>
-                </td>
-              )}
+              <td data-label="System"><OsTag os={h.os} /></td>
+              {showOwner && <td data-label="Environment" className="env">{h.environment || '—'}</td>}
+              {showOwner && <td data-label="Owner" className="owner">{h.owner || '—'}</td>}
               {CATS.map((c) => (
                 <td key={c} data-label={c} className="num count-cell"><OpenCount n={h.open?.[c] || 0} cat={c} /></td>
               ))}
@@ -54,7 +44,7 @@ export function HostTable({ hosts, caption, showOwner = true, showScans = true }
               {showScans && (
                 <td data-label="Last scan" className="date-cell">
                   {formatDate(h.latest_scan?.collected_at)}
-                  {h.latest_scan && <span className="muted small"> · {h.latest_scan.benchmark_release}</span>}
+                  {h.latest_scan && <span className="muted"> · {h.latest_scan.benchmark_release}</span>}
                 </td>
               )}
             </tr>

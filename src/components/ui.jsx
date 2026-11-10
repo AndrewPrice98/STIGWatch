@@ -1,15 +1,20 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import {
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, Copy, Download, ExternalLink, Eye, EyeOff, FileText,
+  GitCompareArrows, Info, LayoutDashboard, Library, Lock, Menu, Pencil, Plus, Search, Server, ShieldAlert,
+  Terminal, TriangleAlert, Upload, Wrench, X,
+} from 'lucide-react'
 import { STATUS_INFO, asyncView } from '../lib.js'
 
 // -- status and severity: always a text label, never colour alone -----------------------------
 
-/** Status chip: glyph + text + tone. */
-export function StatusChip({ status, small }) {
-  const s = STATUS_INFO[status] || { label: status, tone: 'neutral', glyph: '' }
+/** Status: a 6 px dot plus the label. The dot repeats the tone; the text carries the meaning. */
+export function StatusChip({ status }) {
+  const s = STATUS_INFO[status] || { label: status, tone: 'neutral' }
   return (
-    <span className={`chip ${s.tone}${small ? ' small' : ''}`}>
-      {s.glyph && <span className="chip-glyph" aria-hidden="true">{s.glyph}</span>}
+    <span className={`status ${s.tone}`}>
+      <i className="dot" aria-hidden="true" />
       {s.label}
     </span>
   )
@@ -18,11 +23,10 @@ export function StatusChip({ status, small }) {
 const CAT_CLASS = { 'CAT I': 'cat1', 'CAT II': 'cat2', 'CAT III': 'cat3' }
 const CAT_SEVERITY_WORD = { 'CAT I': 'high', 'CAT II': 'medium', 'CAT III': 'low' }
 
-/** Severity badge: "CAT I" text with its colour and a severity bar glyph. */
+/** Severity tag: the CAT text on a faint tint of the severity hue. */
 export function CatBadge({ cat, withSeverity }) {
   return (
     <span className={`cat ${CAT_CLASS[cat] || ''}`} title={`${cat}: ${CAT_SEVERITY_WORD[cat] || ''} severity`}>
-      <span className="cat-bars" aria-hidden="true"><i /><i /><i /></span>
       {cat}{withSeverity && <span className="cat-sev"> · {CAT_SEVERITY_WORD[cat]}</span>}
     </span>
   )
@@ -77,16 +81,19 @@ export function Empty({ children }) {
   return <div className="state">{children}</div>
 }
 
-/** Page wrapper with the standard heading block. The h1 takes focus after navigation. */
-export function PageHead({ eyebrow, title, children, actions, back }) {
+/**
+ * Page heading: a 21 px title with at most one short muted line under it. The h1 takes focus
+ * after navigation. `children` is for the rare extra row (host metadata).
+ */
+export function PageHead({ title, sub, children, actions, back }) {
   return (
     <header className="page-head">
       <div className="page-head-main">
         {back && (
-          <Link className="back-link" to={back.to}><Icon name="back" size={16} />{back.label}</Link>
+          <Link className="back-link" to={back.to}><Icon name="back" size={14} />{back.label}</Link>
         )}
-        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <h1 tabIndex={-1}>{title}</h1>
+        {sub && <p className="page-sub">{sub}</p>}
         {children}
       </div>
       {actions && <div className="page-actions">{actions}</div>}
@@ -94,38 +101,96 @@ export function PageHead({ eyebrow, title, children, actions, back }) {
   )
 }
 
-export function Icon({ name, size = 16, label }) {
-  const paths = {
-    github: <path d="M10 1.5a8.5 8.5 0 0 0-2.7 16.6c.4 0 .6-.2.6-.4v-1.5c-2.4.5-2.9-1-2.9-1-.4-1-1-1.3-1-1.3-.8-.5 0-.5 0-.5.9 0 1.3.9 1.3.9.8 1.3 2 1 2.5.7 0-.6.3-1 .6-1.2-1.9-.2-3.9-1-3.9-4.2 0-.9.3-1.7.9-2.3-.1-.2-.4-1.1.1-2.3 0 0 .7-.2 2.3.9a8 8 0 0 1 4.2 0c1.6-1.1 2.3-.9 2.3-.9.5 1.2.2 2 .1 2.3.5.6.9 1.4.9 2.3 0 3.3-2 4-3.9 4.2.3.3.6.8.6 1.6v2.4c0 .2.2.5.6.4A8.5 8.5 0 0 0 10 1.5Z" fill="currentColor" stroke="none" />,
-    back: <path d="M12.5 4.5 7 10l5.5 5.5" />,
-    arrow: <><path d="M4 10h11" /><path d="m11 5.5 4.5 4.5-4.5 4.5" /></>,
-    lock: <><rect x="4" y="9" width="12" height="8.5" rx="1.5" /><path d="M7 9V6.5a3 3 0 0 1 6 0V9" /></>,
-    radar: <><circle cx="10" cy="10" r="7.5" /><circle cx="10" cy="10" r="3.2" /><path d="M10 2.5v2.8M10 14.7v2.8M2.5 10h2.8M14.7 10h2.8" /></>,
-    alert: <><path d="M9.1 2.6 1.7 15.2A1.2 1.2 0 0 0 2.7 17h14.6a1.2 1.2 0 0 0 1-1.8L10.9 2.6a1 1 0 0 0-1.8 0Z" /><path d="M10 7.5v4" /><path d="M10 14.2v.1" /></>,
-    info: <><circle cx="10" cy="10" r="7.5" /><path d="M10 9v5" /><path d="M10 6.2v.1" /></>,
-    check: <path d="m4.5 10.5 3.5 3.5 7.5-8" />,
-    download: <><path d="M10 3v10" /><path d="m5.5 8.5 4.5 4.5 4.5-4.5" /><path d="M3.5 16.5h13" /></>,
-    terminal: <><rect x="2.5" y="3.5" width="15" height="13" rx="1.5" /><path d="m6 8 2.5 2L6 12" /><path d="M10.5 12.5H14" /></>,
-    server: <><rect x="3" y="3" width="14" height="5.5" rx="1.2" /><rect x="3" y="11.5" width="14" height="5.5" rx="1.2" /><path d="M6 5.8h.1M6 14.3h.1" /></>,
-    eye: <><path d="M1.8 10S5 4.5 10 4.5 18.2 10 18.2 10 15 15.5 10 15.5 1.8 10 1.8 10Z" /><circle cx="10" cy="10" r="2.5" /></>,
-    eyeOff: <><path d="M3 3l14 14" /><path d="M8.2 4.7A8 8 0 0 1 10 4.5c5 0 8.2 5.5 8.2 5.5a14 14 0 0 1-2.3 2.9M5.4 6.4A13.6 13.6 0 0 0 1.8 10S5 15.5 10 15.5a7.6 7.6 0 0 0 3.5-.9" /></>,
-    up: <><path d="M10 16V4" /><path d="m5 9 5-5 5 5" /></>,
-    down: <><path d="M10 4v12" /><path d="m5 11 5 5 5-5" /></>,
-    edit: <path d="m12.5 4 3.5 3.5L7.5 16H4v-3.5L12.5 4Z" />,
-    copy: <><rect x="7" y="7" width="9.5" height="9.5" rx="1.5" /><path d="M13 7V4.5A1.5 1.5 0 0 0 11.5 3h-7A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H7" /></>,
-    upload: <><path d="M10 13V3" /><path d="m5.5 7.5 4.5-4.5 4.5 4.5" /><path d="M3.5 16.5h13" /></>,
-    plus: <><path d="M10 4v12" /><path d="M4 10h12" /></>,
-    file: <><path d="M5 2.5h6.5L15.5 6.5v10a1 1 0 0 1-1 1h-9.5a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z" /><path d="M11.5 2.5v4h4" /><path d="M7 11h6M7 14h6" /></>,
-    external: <><path d="M11 3.5h5.5V9" /><path d="M16.5 3.5 9 11" /><path d="M14 12v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4" /></>,
-  }
+/** A flat panel: a hairline-bordered surface with an optional heading row. `flush` drops the body padding (tables). */
+export function Panel({ id, title, desc, actions, flush, live, className = '', children }) {
+  const titleId = id ? `${id}-title` : undefined
   return (
-    <svg className="icon" width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor"
-      strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"
-      aria-hidden={label ? undefined : 'true'} role={label ? 'img' : undefined} aria-label={label}
-      focusable="false">
-      {paths[name]}
-    </svg>
+    <section id={id} className={`panel ${className}`} aria-labelledby={title ? titleId : undefined}>
+      {(title || actions) && (
+        <div className="panel-head">
+          <div>
+            {title && <h2 id={titleId} aria-live={live ? 'polite' : undefined}>{title}</h2>}
+            {desc && <p className="panel-desc">{desc}</p>}
+          </div>
+          {actions && <div className="panel-actions">{actions}</div>}
+        </div>
+      )}
+      <div className={flush ? 'panel-flush' : 'panel-body'}>{children}</div>
+    </section>
   )
+}
+
+/** A plain one-row notice: an icon and text on the surface, no coloured edge. */
+export function Notice({ icon = 'info', tone = '', title, children, actions }) {
+  return (
+    <div className={`notice ${tone}`} role="note">
+      <Icon name={icon} size={16} />
+      <div className="notice-text">
+        {title && <p className="notice-title">{title}</p>}
+        {children}
+      </div>
+      {actions && <div className="notice-actions">{actions}</div>}
+    </div>
+  )
+}
+
+/** The long version of a page's explanation, folded away behind a disclosure. */
+export function About({ children }) {
+  return (
+    <details className="about">
+      <summary>About this view</summary>
+      <div className="about-body">{children}</div>
+    </details>
+  )
+}
+
+const ICONS = {
+  back: ArrowLeft,
+  arrow: ArrowRight,
+  lock: Lock,
+  alert: TriangleAlert,
+  info: Info,
+  check: Check,
+  download: Download,
+  terminal: Terminal,
+  server: Server,
+  eye: Eye,
+  eyeOff: EyeOff,
+  up: ArrowUp,
+  down: ArrowDown,
+  edit: Pencil,
+  copy: Copy,
+  upload: Upload,
+  plus: Plus,
+  file: FileText,
+  external: ExternalLink,
+  menu: Menu,
+  close: X,
+  search: Search,
+  dashboard: LayoutDashboard,
+  hosts: Server,
+  findings: ShieldAlert,
+  drift: GitCompareArrows,
+  remediation: Wrench,
+  reports: FileText,
+  benchmarks: Library,
+}
+
+/** Stroke icons from lucide-react (16 px, 1.5 stroke, current colour). GitHub is a brand mark, drawn here. */
+export function Icon({ name, size = 16, label }) {
+  const a11y = {
+    'aria-hidden': label ? undefined : 'true', role: label ? 'img' : undefined, 'aria-label': label, focusable: 'false',
+  }
+  if (name === 'github') {
+    return (
+      <svg className="icon" width={size} height={size} viewBox="0 0 20 20" fill="currentColor" {...a11y}>
+        <path d="M10 1.5a8.5 8.5 0 0 0-2.7 16.6c.4 0 .6-.2.6-.4v-1.5c-2.4.5-2.9-1-2.9-1-.4-1-1-1.3-1-1.3-.8-.5 0-.5 0-.5.9 0 1.3.9 1.3.9.8 1.3 2 1 2.5.7 0-.6.3-1 .6-1.2-1.9-.2-3.9-1-3.9-4.2 0-.9.3-1.7.9-2.3-.1-.2-.4-1.1.1-2.3 0 0 .7-.2 2.3.9a8 8 0 0 1 4.2 0c1.6-1.1 2.3-.9 2.3-.9.5 1.2.2 2 .1 2.3.5.6.9 1.4.9 2.3 0 3.3-2 4-3.9 4.2.3.3.6.8.6 1.6v2.4c0 .2.2.5.6.4A8.5 8.5 0 0 0 10 1.5Z" />
+      </svg>
+    )
+  }
+  const Glyph = ICONS[name]
+  if (!Glyph) return null
+  return <Glyph className="icon" size={size} strokeWidth={1.5} {...a11y} />
 }
 
 /** Inline result of a save: announced politely. */

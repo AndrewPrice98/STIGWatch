@@ -1,29 +1,33 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { api } from '../api.js'
 import {
   CATS, COMPLIANCE_DEFINITION, STATUSES, STATUS_INFO, catBreakdown, filterResults, formatDate,
-  formatDateTime, formatPct, plural, privilegeGaps, sortResults,
+  formatDateTime, formatPct, notReviewedCount, plural, ranUnprivileged, sortResults,
 } from '../lib.js'
+import { UploadScan } from '../components/admin.jsx'
 import { CatBars } from '../components/charts.jsx'
 import { OsTag } from '../components/hosts.jsx'
 import {
   CatBadge, Empty, ErrorState, Icon, Loading, OpenCount, PageHead, StatusChip, useAsync, usePageTitle, useSession,
 } from '../components/ui.jsx'
+import { useUrlFilters } from '../useUrlFilters.js'
 
 const ruleLink = (hostId, stigId) => `/hosts/${hostId}/rules/${encodeURIComponent(stigId)}`
 
-function PrivilegeNotice({ host, gaps, onShow }) {
+/** Shown only when the scan's `privileged` flag is false; unknown (null) makes no claim. */
+function PrivilegeNotice({ host, scan, cat1NotReviewed, onShow }) {
   const how = host.os === 'windows'
     ? 'Run the collector from an elevated PowerShell (as Administrator)'
     : 'Run the collector as root (sudo sh collectors/collect-linux.sh)'
+  const n = notReviewedCount(scan)
   return (
     <section className="card notice warn" aria-labelledby="priv-title">
       <h2 id="priv-title"><Icon name="lock" size={17} /> This scan ran without {host.os === 'windows' ? 'Administrator' : 'root'} rights</h2>
       <p>
-        <strong>{plural(gaps.count, 'rule')}</strong>{gaps.cat1 > 0 && <> (including {gaps.cat1} CAT I)</>} could not be
-        decided because the collector could not read privileged files or settings, so they are <strong>Not reviewed</strong>,
-        never Not a finding. They are excluded from the compliance figure, which therefore covers fewer rules than
+        <strong>{plural(n, 'rule')}</strong>{cat1NotReviewed > 0 && <> (including {cat1NotReviewed} CAT I)</>} {n === 1 ? 'is' : 'are'} Not reviewed
+        in this scan. Rules that need privileged files or settings could not be decided, so they are <strong>Not reviewed</strong>,
+        never Not a finding, and they are excluded from the compliance figure, which therefore covers fewer rules than
         on other hosts. {how} for full coverage.
       </p>
       <button type="button" className="btn secondary small" onClick={onShow}>Show the Not reviewed results</button>
@@ -181,42 +185,16 @@ function DriftPanel({ drift, hostId, titles }) {
 
 const PAGE = 40
 
-function readResultFilters(params) {
-  const status = params.get('status') || ''
-  const cat = params.get('cat') || ''
-  return {
-    status: STATUSES.includes(status) ? status : '',
-    cat: CATS.includes(cat) ? cat : '',
-    q: (params.get('q') || '').slice(0, 100),
-  }
+const RESULT_SPEC = {
+  status: { param: 'status', default: '', allow: STATUSES },
+  cat: { param: 'cat', default: '', allow: CATS },
+  q: { param: 'q', default: '', max: 100, search: true },
 }
 
-function ResultsTable({ results, hostId, params, setParams }) {
-  const filters = readResultFilters(params)
-  const [search, setSearch] = useState(filters.q)
-  useEffect(() => { setSearch((s) => (s.trim() === filters.q ? s : filters.q)) }, [filters.q])
-
-  function update(changes) {
-    // Read the URL as it is now, not as it was at the last render (router updates run in a transition).
-    const sp = new URLSearchParams(window.location.search)
-    const next = { ...readResultFilters(sp), ...changes }
-    for (const key of ['status', 'cat', 'q']) {
-      if (next[key]) sp.set(key, next[key])
-      else sp.delete(key)
-    }
-    setParams(sp, { replace: true })
-  }
-
-  useEffect(() => {
-    const value = search.trim()
-    if (value === filters.q) return undefined
-    const t = setTimeout(() => update({ q: value }), 200)
-    return () => clearTimeout(t)
-  }, [search]) // eslint-disable-line react-hooks/exhaustive-deps
-
+function ResultsTable({ results, hostId, url }) {
+  const { filters, update, clear, search, setSearch, submitSearch, any: anyFilter } = url
   const sorted = useMemo(() => sortResults(results), [results])
   const shown = useMemo(() => filterResults(sorted, filters), [sorted, filters.status, filters.cat, filters.q]) // eslint-disable-line react-hooks/exhaustive-deps
-  const anyFilter = filters.status || filters.cat || filters.q
   const [limit, setLimit] = useState(PAGE)
   useEffect(() => { setLimit(PAGE) }, [filters.status, filters.cat, filters.q, results])
   const visible = shown.slice(0, limit)
@@ -232,7 +210,7 @@ function ResultsTable({ results, hostId, params, setParams }) {
         </div>
       </div>
       <form className="filters inline" role="search" aria-label="Filter results"
-        onSubmit={(e) => { e.preventDefault(); update({ q: search.trim() }) }}>
+        onSubmit={(e) => { e.preventDefault(); submitSearch() }}>
         <label className="field grow">
           <span>Search</span>
           <input type="search" value={search} maxLength={100} placeholder="STIG ID, title or reason"
@@ -253,8 +231,7 @@ function ResultsTable({ results, hostId, params, setParams }) {
           </select>
         </label>
         {anyFilter && (
-          <button type="button" className="btn ghost small clear-btn"
-            onClick={() => { setSearch(''); update({ status: '', cat: '', q: '' }) }}>Clear</button>
+          <button type="button" className="btn ghost small clear-btn" onClick={clear}>Clear</button>
         )}
       </form>
       {shown.length ? (
@@ -314,17 +291,25 @@ async function loadScan(scanId) {
   return { results: res.results, drift }
 }
 
-export default function HostDetail() {
+/** Keyed by host: opening another host starts from a clean slate, never showing the previous one. */
+export default function HostDetailRoute() {
   const { hostId } = useParams()
+  return <HostDetail key={hostId} hostId={hostId} />
+}
+
+function HostDetail({ hostId }) {
   const location = useLocation()
-  const [params, setParams] = useSearchParams()
+  const url = useUrlFilters(RESULT_SPEC)
+  const { params } = url
   const { guest } = useSession()
   const base = useAsync(() => loadHost(hostId), [hostId])
   usePageTitle(base.data?.host?.name || 'Host')
 
   const scans = base.data?.scans || []
   const requested = Number(params.get('scan'))
-  const selected = scans.find((s) => s.id === requested) || scans[0] || null
+  const found = scans.find((s) => s.id === requested)
+  const badScan = params.has('scan') && scans.length > 0 && !found
+  const selected = found || scans[0] || null
   const scanData = useAsync(() => (selected ? loadScan(selected.id) : Promise.resolve(null)), [selected?.id])
 
   const alertsByScan = useMemo(() => {
@@ -336,7 +321,8 @@ export default function HostDetail() {
     return map
   }, [base.data])
   const titles = useMemo(() => new Map((scanData.data?.results || []).map((r) => [r.stig_id, r.title])), [scanData.data])
-  const gaps = useMemo(() => privilegeGaps(scanData.data?.results || []), [scanData.data])
+  const cat1NotReviewed = useMemo(
+    () => (scanData.data ? catBreakdown(scanData.data.results)['CAT I'].Not_Reviewed : 0), [scanData.data])
 
   // Links to #drift or #results scroll there once the scan has loaded.
   useEffect(() => {
@@ -358,11 +344,8 @@ export default function HostDetail() {
   const isLatest = selected && selected.id === scans[0]?.id
 
   function showNotReviewed() {
-    const sp = new URLSearchParams(window.location.search)
-    sp.set('status', 'Not_Reviewed')
-    sp.delete('cat')
-    sp.delete('q')
-    setParams(sp, { replace: true })
+    url.setSearch('')
+    url.update({ status: 'Not_Reviewed', cat: '', q: '' })
     requestAnimationFrame(() => document.getElementById('results')?.scrollIntoView({ block: 'start' }))
   }
 
@@ -397,13 +380,18 @@ export default function HostDetail() {
 
       {selected && (
         <>
+          {badScan && (
+            <p className="state info-strip" role="status">
+              The scan in this link (#{params.get('scan').slice(0, 20)}) is not one of this host&apos;s scans, so the latest scan is shown.
+            </p>
+          )}
           {!isLatest && (
             <p className="state info-strip" role="status">
               Showing the scan of {formatDate(selected.collected_at)}, not the latest.{' '}
               <Link to={`/hosts/${host.id}`} replace>Back to the latest scan</Link>
             </p>
           )}
-          {scanData.data && gaps.unprivileged && <PrivilegeNotice host={host} gaps={gaps} onShow={showNotReviewed} />}
+          {ranUnprivileged(selected) && <PrivilegeNotice host={host} scan={selected} cat1NotReviewed={cat1NotReviewed} onShow={showNotReviewed} />}
           {scanData.data && <ScanSummary scan={selected} results={scanData.data.results} />}
           <Timeline scans={scans} selectedId={selected.id} alertsByScan={alertsByScan} hostId={host.id}
             search={params.toString()} />
@@ -412,8 +400,13 @@ export default function HostDetail() {
           {scanData.data && (
             <>
               <DriftPanel drift={scanData.data.drift} hostId={host.id} titles={titles} />
-              <ResultsTable results={scanData.data.results} hostId={host.id} params={params} setParams={setParams} />
+              <ResultsTable results={scanData.data.results} hostId={host.id} url={url} />
             </>
+          )}
+          {!guest && (
+            <section className="card" aria-label="Upload a scan for this host">
+              <UploadScan hostId={host.id} heading={`Upload a scan for ${host.name}`} onDone={base.reload} />
+            </section>
           )}
           {guest && <p className="muted small read-only-note"><Icon name="lock" size={13} /> Read-only demo: assessor comments are shown but only an admin can edit them.</p>}
         </>

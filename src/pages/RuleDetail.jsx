@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api.js'
-import { formatDate, formatDateTime, formatObserved, isPrivilegeGap, plural, splitStigText } from '../lib.js'
+import { formatDate, formatDateTime, formatObserved, plural, ranUnprivileged, splitStigText } from '../lib.js'
 import {
   CatBadge, ErrorState, FormMessage, Icon, Loading, PageHead, StatusChip, useAsync, usePageTitle, useSession,
 } from '../components/ui.jsx'
@@ -85,6 +85,7 @@ function History({ history }) {
   )
 }
 
+/** Keyed by host and rule by the caller, so a draft or a pending save can never reach another rule. */
 function Comment({ hostId, stigId, comment, onSaved }) {
   const { guest, authConfigured, signIn } = useSession()
   const saved = comment?.text || ''
@@ -143,14 +144,18 @@ function Comment({ hostId, stigId, comment, onSaved }) {
   )
 }
 
-export default function RuleDetail() {
+/** Keyed by host and rule: moving to another rule starts from a clean slate. */
+export default function RuleDetailRoute() {
   const { hostId, stigId } = useParams()
+  return <RuleDetail key={`${hostId}:${stigId}`} hostId={hostId} stigId={stigId} />
+}
+
+function RuleDetail({ hostId, stigId }) {
   const { data, error, loading, reload } = useAsync(
     () => Promise.all([api.rule(hostId, stigId), api.host(hostId)]).then(([rule, host]) => ({ rule, host })),
     [hostId, stigId],
   )
   const [comment, setComment] = useState(undefined)
-  useEffect(() => { setComment(undefined) }, [hostId, stigId])
   usePageTitle(data ? `${stigId} on ${data.host.name}` : stigId)
 
   const back = { to: `/hosts/${hostId}`, label: data?.host?.name ? `Back to ${data.host.name}` : 'Back to the host' }
@@ -167,7 +172,9 @@ export default function RuleDetail() {
   const rule = detail.rule
   const latest = detail.history.at(-1)
   const currentComment = comment === undefined ? detail.comment : comment
-  const privilege = latest && isPrivilegeGap(latest)
+  // Only when the rule's latest result is from the host's latest scan and that scan says it ran unprivileged.
+  const privilege = latest && latest.status === 'Not_Reviewed' && host.latest_scan?.id === latest.scan_id
+    && ranUnprivileged(host.latest_scan)
 
   return (
     <div className="page">
@@ -187,9 +194,10 @@ export default function RuleDetail() {
             {latest ? <p className="reason-full">{latest.reason}</p> : <p className="muted">This host has never been scanned for this rule.</p>}
             {privilege && (
               <p className="callout warn small">
-                <Icon name="lock" size={15} /> Not reviewed because the collector ran without{' '}
-                {host.os === 'windows' ? 'Administrator rights' : 'root'}. Run it {host.os === 'windows' ? 'from an elevated PowerShell' : 'with sudo'} to
-                decide this rule. Not reviewed is never counted as compliant.
+                <Icon name="lock" size={15} /> The collector ran without{' '}
+                {host.os === 'windows' ? 'Administrator rights' : 'root'}, so rules that need privileged facts could not be decided; the reason above
+                says what this rule was missing. Run it {host.os === 'windows' ? 'from an elevated PowerShell' : 'with sudo'} for full coverage.
+                Not reviewed is never counted as compliant.
               </p>
             )}
           </section>
@@ -240,7 +248,7 @@ export default function RuleDetail() {
 
           <section className="card" aria-labelledby="comment-title">
             <h2 id="comment-title">Assessor comment</h2>
-            <Comment hostId={host.id} stigId={stigId} comment={currentComment} onSaved={setComment} />
+            <Comment key={`${host.id}:${stigId}`} hostId={host.id} stigId={stigId} comment={currentComment} onSaved={setComment} />
           </section>
 
           <section className="card" aria-labelledby="history-title">

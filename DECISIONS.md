@@ -317,3 +317,11 @@ The two skips are Linux-only (the full collector run and the permission-denied p
 - **Known N+1:** `/api/hosts`, `/api/fleet` and the fleet exports run a few queries per host (summary counts, latest scan, drift). That is fine for tens of hosts (the demo fleet is 14) and would be replaced by grouped queries before hundreds.
 - **`privileged`:** scan objects carry `privileged`, read from the collector's own top-level `privileged` flag in the stored scan JSON. It is tri-state: `true` or `false` only when the stored value is that JSON boolean, `null` when it is missing or null (unknown is not the same as not privileged; the UI makes no claim on null). Added to scan lists, `latest_scan`, results and the upload response; no existing field changed.
 - The sshd Include pre-task test runs the real `grep` on Linux (skipped on Windows, where the MSYS grep re-parses backslashes). 174 is the Ubuntu automated-check count (`coverage`), not a remediation count; the Windows remediation count is 150 everywhere it is stated.
+
+## Dashboard part 2 (Task 10)
+
+- **Fleet report preview.** The HTML report is served as an attachment with `X-Frame-Options: DENY` and a `sandbox` CSP, so it cannot be framed. The Reports page therefore draws the preview as React text from `/api/fleet` and `/api/hosts` (same numbers) and never inserts report HTML into the page. The download is verified separately.
+- **Syntax highlighting** is a small tokeniser (`src/highlight.js`) returning plain data; the page renders each token as a React span with a text child.
+- **Fleet drift** has no backend endpoint: the page reads each host's scan list, takes the fleet trend for the weekly totals, and loads per-scan drift only for the selected week.
+- **Privilege.** The "ran without root" notice uses the tri-state `scan.privileged` (only `false` shows it); reason-text matching was removed everywhere, including the per-rule callout.
+- **Router.** react-router-dom 7; URL filters live in `useUrlFilters`, which builds each update on the last one sent so quick changes do not undo each other.

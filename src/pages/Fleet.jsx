@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom'
 import { api } from '../api.js'
+import { NoData } from '../components/admin.jsx'
+import { mapLimit } from '../data.js'
 import {
   CATS, DISCLAIMER, describeDelta, formatDate, hostsAtRisk, listWords, plural, regressionStory, weekDelta,
 } from '../lib.js'
@@ -11,7 +13,12 @@ import {
 
 async function loadFleet() {
   const [fleet, alerts, hosts] = await Promise.all([api.fleet(), api.alerts(), api.hosts()])
-  const story = regressionStory(alerts, fleet.trend)
+  // An alert is dated by the scan it was raised for: join each alert to that scan's collected_at.
+  const alertHosts = [...new Set(alerts.map((a) => a.host_id))]
+  const scanLists = await mapLimit(alertHosts, 6, (id) => api.hostScans(id).catch(() => []))
+  const collectedAt = new Map(scanLists.flat().map((s) => [s.id, s.collected_at]))
+  const dated = alerts.map((a) => ({ ...a, collected_at: collectedAt.get(a.scan_id) }))
+  const story = regressionStory(dated, fleet.trend)
   if (story) {
     // Title and current status of each regressed rule (a handful of requests at most).
     const details = await Promise.all(story.rules.slice(0, 8).map((a) => api.rule(a.host_id, a.stig_id).catch(() => null)))
@@ -25,6 +32,8 @@ async function loadFleet() {
 
 function StartHere({ story }) {
   const stillOpen = story.rules.filter((r) => r.now === 'Open').length
+  const closedNow = story.rules.filter((r) => r.now === 'NotAFinding' || r.now === 'Not_Applicable').length
+  const unknownNow = story.rules.filter((r) => r.now === 'Not_Reviewed').length
   const hostNames = story.hosts.map((h) => h.name)
   return (
     <section className="card start-here" aria-labelledby="start-title">
@@ -34,11 +43,13 @@ function StartHere({ story }) {
           {story.week ? `Week ${story.week}: ` : ''}{plural(story.rules.length, 'CAT I rule')} regressed on {listWords(hostNames)}
         </h2>
         <p>
-          In the scans of {formatDate(story.day)}, {story.rules.length === 1 ? 'this rule' : 'these rules'} went
-          from Not a finding to Open, and STIGWatch raised a CAT I alert for each.{' '}
+          In the scans of {formatDate(story.day)}, {story.rules.length === 1 ? 'this rule' : 'these rules'}{' '}
+          went from closed (Not a finding or Not applicable) to Open, and STIGWatch raised a CAT I alert for each.{' '}
           {stillOpen > 0
             ? <><strong>{plural(stillOpen, 'is', 'are')} still open</strong> in the latest scan.</>
-            : <>All of them have been fixed since.</>}
+            : <>None is Open in the latest scan.</>}
+          {closedNow > 0 && <> {plural(closedNow, 'rule')} closed again (Not a finding or Not applicable).</>}
+          {unknownNow > 0 && <> {plural(unknownNow, 'rule')} {unknownNow === 1 ? 'is' : 'are'} Not reviewed in the latest scan, so it is not known whether {unknownNow === 1 ? 'it is' : 'they are'} fixed.</>}
         </p>
       </div>
       <ul className="story-list">
@@ -70,11 +81,10 @@ function StartHere({ story }) {
   )
 }
 
-function CatTile({ cat, trend, hosts }) {
-  const d = weekDelta(trend, cat)
+function CatTile({ cat, value, trend, hosts }) {
+  const d = weekDelta(trend, cat) // the trend supplies the week-over-week change and the sparkline
   const delta = describeDelta(d?.change)
   const onHosts = hosts.filter((h) => (h.open?.[cat] || 0) > 0).length
-  const value = d ? d.current : trend.at(-1)?.open?.[cat] ?? 0
   return (
     <section className={`card tile ${cat === 'CAT I' ? 'cat1' : cat === 'CAT II' ? 'cat2' : 'cat3'}`} aria-label={`Open ${cat} findings`}>
       <div className="tile-head"><CatBadge cat={cat} withSeverity /></div>
@@ -100,6 +110,17 @@ export default function Fleet() {
   if (loading && !data) return <div className="page"><Loading label="Loading the fleet…" /></div>
   if (error) return <div className="page"><ErrorState error={error} onRetry={reload} /></div>
   const { fleet, hosts, story } = data
+  if (!hosts.some((h) => h.latest_scan)) {
+    return (
+      <div className="page">
+        <PageHead eyebrow="Fleet overview" title="Fleet">
+          <p className="lede">STIGWatch checks each host against the DISA STIG for its operating system, using read-only collector output.</p>
+          <p className="disclaimer-note"><Icon name="info" size={15} /> {DISCLAIMER}</p>
+        </PageHead>
+        <NoData onChanged={reload} />
+      </div>
+    )
+  }
   const lastWeek = fleet.trend.at(-1)?.week
   const atRisk = hostsAtRisk(hosts, 6)
   const annotation = story?.week
@@ -134,7 +155,7 @@ export default function Fleet() {
 
       <h2 className="section-title">Latest scans{lastWeek && <span className="muted"> · week of {formatDate(lastWeek)}</span>}</h2>
       <div className="kpi-grid">
-        {CATS.map((cat) => <CatTile key={cat} cat={cat} trend={fleet.trend} hosts={hosts} />)}
+        {CATS.map((cat) => <CatTile key={cat} cat={cat} value={fleet.open?.[cat] ?? 0} trend={fleet.trend} hosts={hosts} />)}
         <section className="card tile gauge-tile" aria-labelledby="gauge-title">
           <h3 id="gauge-title" className="tile-label">Fleet compliance</h3>
           <ComplianceGauge value={fleet.compliance} notReviewed={fleet.status.Not_Reviewed}

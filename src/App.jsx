@@ -7,7 +7,11 @@ import Hosts from './pages/Hosts.jsx'
 import HostDetail from './pages/HostDetail.jsx'
 import RuleDetail from './pages/RuleDetail.jsx'
 import Login from './pages/Login.jsx'
-import Placeholder from './pages/Placeholder.jsx'
+import Findings from './pages/Findings.jsx'
+import Drift from './pages/Drift.jsx'
+import Remediation from './pages/Remediation.jsx'
+import Reports from './pages/Reports.jsx'
+import Benchmarks from './pages/Benchmarks.jsx'
 import { Empty, ErrorState, Icon, Loading, SessionContext, usePageTitle, useSession } from './components/ui.jsx'
 
 const NAV = [
@@ -112,11 +116,11 @@ function Shell({ onLogout, onSignIn }) {
           <Route path="/hosts" element={<Hosts />} />
           <Route path="/hosts/:hostId" element={<HostDetail />} />
           <Route path="/hosts/:hostId/rules/:stigId" element={<RuleDetail />} />
-          <Route path="/findings" element={<Placeholder page="findings" />} />
-          <Route path="/drift" element={<Placeholder page="drift" />} />
-          <Route path="/remediation" element={<Placeholder page="remediation" />} />
-          <Route path="/reports" element={<Placeholder page="reports" />} />
-          <Route path="/benchmarks" element={<Placeholder page="benchmarks" />} />
+          <Route path="/findings" element={<Findings />} />
+          <Route path="/drift" element={<Drift />} />
+          <Route path="/remediation" element={<Remediation />} />
+          <Route path="/reports" element={<Reports />} />
+          <Route path="/benchmarks" element={<Benchmarks />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
@@ -201,7 +205,7 @@ function App() {
   }
   return (
     <SessionContext.Provider value={session}>
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter>
         <Shell onLogout={logout} onSignIn={signIn} />
       </BrowserRouter>
     </SessionContext.Provider>

@@ -1,57 +1,29 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useMemo } from 'react'
 import { api } from '../api.js'
 import { HOST_SORTS, OS_LABEL, environments, filterHosts, plural, sortHosts } from '../lib.js'
+import { AdminTools, NoData } from '../components/admin.jsx'
 import { HostTable } from '../components/hosts.jsx'
 import { Empty, ErrorState, Loading, PageHead, useAsync, usePageTitle } from '../components/ui.jsx'
+import { useUrlFilters } from '../useUrlFilters.js'
 
-/** Read filters from the URL, dropping anything that is not on the allow-lists. */
-function readFilters(params, envs) {
-  const os = params.get('os') || ''
-  const env = params.get('env') || ''
-  const sort = params.get('sort') || 'risk'
-  return {
-    os: os in OS_LABEL ? os : '',
-    environment: envs.includes(env) ? env : '',
-    cat1: params.get('cat1') === '1',
-    q: (params.get('q') || '').slice(0, 100),
-    sort: sort in HOST_SORTS ? sort : 'risk',
-  }
-}
+const SORT_KEYS = Object.keys(HOST_SORTS)
 
 export default function Hosts() {
   usePageTitle('Hosts')
   const { data, error, loading, reload } = useAsync(() => api.hosts(), [])
-  const [params, setParams] = useSearchParams()
   const envs = useMemo(() => environments(data || []), [data])
-  const filters = readFilters(params, envs)
-  const [search, setSearch] = useState(filters.q)
-
-  useEffect(() => { setSearch((s) => (s.trim() === filters.q ? s : filters.q)) }, [filters.q])
-
-  function update(changes) {
-    // Read the URL as it is now, not as it was at the last render: router updates run in a
-    // transition, so two quick changes would otherwise undo each other.
-    const next = { ...readFilters(new URLSearchParams(window.location.search), envs), ...changes }
-    const sp = new URLSearchParams()
-    if (next.os) sp.set('os', next.os)
-    if (next.environment) sp.set('env', next.environment)
-    if (next.cat1) sp.set('cat1', '1')
-    if (next.q) sp.set('q', next.q)
-    if (next.sort !== 'risk') sp.set('sort', next.sort)
-    setParams(sp, { replace: true })
-  }
-
-  useEffect(() => {
-    const value = search.trim()
-    if (value === filters.q) return undefined
-    const t = setTimeout(() => update({ q: value }), 200)
-    return () => clearTimeout(t)
-  }, [search]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The environment list comes from the data, so the allow-list is built from it.
+  const spec = useMemo(() => ({
+    os: { param: 'os', default: '', allow: Object.keys(OS_LABEL) },
+    environment: { param: 'env', default: '', allow: envs },
+    cat1: { param: 'cat1', default: false, flag: true },
+    q: { param: 'q', default: '', max: 100, search: true },
+    sort: { param: 'sort', default: 'risk', allow: SORT_KEYS, view: true },
+  }), [envs])
+  const { filters, update, clear, search, setSearch, submitSearch, any: anyFilter } = useUrlFilters(spec)
 
   const shown = useMemo(() => (data ? sortHosts(filterHosts(data, filters), filters.sort) : []),
     [data, filters.os, filters.environment, filters.cat1, filters.q, filters.sort]) // eslint-disable-line react-hooks/exhaustive-deps
-  const anyFilter = filters.os || filters.environment || filters.cat1 || filters.q
 
   return (
     <div className="page">
@@ -59,8 +31,8 @@ export default function Hosts() {
         <p className="lede">Every scanned host with the open findings, compliance and coverage of its latest scan.</p>
       </PageHead>
 
-      <form className="filters card" role="search" aria-label="Filter hosts"
-        onSubmit={(e) => { e.preventDefault(); update({ q: search.trim() }) }}>
+      {(!data || data.length > 0) && <form className="filters card" role="search" aria-label="Filter hosts"
+        onSubmit={(e) => { e.preventDefault(); submitSearch() }}>
         <label className="field grow">
           <span>Search</span>
           <input type="search" value={search} maxLength={100} placeholder="Name, owner or tag"
@@ -90,20 +62,19 @@ export default function Hosts() {
           <input type="checkbox" checked={filters.cat1} onChange={(e) => update({ cat1: e.target.checked })} />
           <span>Has open CAT I</span>
         </label>
-      </form>
+      </form>}
 
       {loading && !data && <Loading label="Loading hosts…" />}
       {error && <ErrorState error={error} onRetry={reload} />}
-      {data && (
+      {data && data.length === 0 && <NoData onChanged={reload} />}
+      {data && data.length > 0 && (
         <section className="card" aria-labelledby="hosts-count">
           <div className="card-head">
             <h2 id="hosts-count" aria-live="polite">
               {anyFilter ? `${shown.length} of ${plural(data.length, 'host')}` : plural(data.length, 'host')}
             </h2>
             {anyFilter && (
-              <button type="button" className="btn ghost small" onClick={() => { setSearch(''); setParams({}, { replace: true }) }}>
-                Clear filters
-              </button>
+              <button type="button" className="btn ghost small" onClick={clear}>Clear filters</button>
             )}
           </div>
           {shown.length
@@ -111,6 +82,7 @@ export default function Hosts() {
             : <Empty>No host matches these filters.</Empty>}
         </section>
       )}
+      {data && data.length > 0 && <AdminTools onChanged={reload} />}
     </div>
   )
 }

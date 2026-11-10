@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { STATUS_INFO } from '../lib.js'
+import { STATUS_INFO, asyncView } from '../lib.js'
 
 // -- status and severity: always a text label, never colour alone -----------------------------
 
@@ -44,7 +44,27 @@ export function Loading({ label = 'Loading…' }) {
   )
 }
 
+/** Error panel. A 503 (the demo data is still being prepared) is a friendly retry state that retries itself. */
 export function ErrorState({ error, onRetry }) {
+  const waiting = error?.status === 503
+  const delay = Math.min(Math.max(error?.retryAfter || 3, 2), 30)
+  useEffect(() => {
+    if (!waiting || !onRetry) return undefined
+    const t = setTimeout(onRetry, delay * 1000)
+    return () => clearTimeout(t)
+  }, [waiting, onRetry, delay])
+  if (waiting) {
+    return (
+      <div className="state" role="status">
+        <span className="spinner" aria-hidden="true" />
+        <span>
+          <strong>The demo data is not ready yet.</strong> It is being prepared and this usually takes a few
+          seconds. Trying again automatically.
+        </span>
+        {onRetry && <button type="button" className="link" onClick={onRetry}>Try now</button>}
+      </div>
+    )
+  }
   return (
     <div className="state error" role="alert">
       <strong>Something went wrong.</strong> {error?.message || String(error)}
@@ -92,6 +112,10 @@ export function Icon({ name, size = 16, label }) {
     up: <><path d="M10 16V4" /><path d="m5 9 5-5 5 5" /></>,
     down: <><path d="M10 4v12" /><path d="m5 11 5 5 5-5" /></>,
     edit: <path d="m12.5 4 3.5 3.5L7.5 16H4v-3.5L12.5 4Z" />,
+    copy: <><rect x="7" y="7" width="9.5" height="9.5" rx="1.5" /><path d="M13 7V4.5A1.5 1.5 0 0 0 11.5 3h-7A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H7" /></>,
+    upload: <><path d="M10 13V3" /><path d="m5.5 7.5 4.5-4.5 4.5 4.5" /><path d="M3.5 16.5h13" /></>,
+    plus: <><path d="M10 4v12" /><path d="M4 10h12" /></>,
+    file: <><path d="M5 2.5h6.5L15.5 6.5v10a1 1 0 0 1-1 1h-9.5a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z" /><path d="M11.5 2.5v4h4" /><path d="M7 11h6M7 14h6" /></>,
     external: <><path d="M11 3.5h5.5V9" /><path d="M16.5 3.5 9 11" /><path d="M14 12v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4" /></>,
   }
   return (
@@ -124,22 +148,28 @@ export function usePageTitle(title) {
   }, [title])
 }
 
-/** Run an async loader whenever deps change. Ignores stale responses. */
+/**
+ * Run an async loader whenever deps change. Ignores stale responses, and never hands back the
+ * data of the previous deps: the render in which the deps change already reports loading with
+ * no data, so host B's URL can never show (or act on) host A's data. `reload()` re-runs the
+ * same loader and keeps the current data on screen while it does.
+ */
 export function useAsync(loader, deps) {
-  const [state, setState] = useState({ loading: true, error: null, data: null })
+  const [state, setState] = useState({ owner: null, loading: true, error: null, data: null })
   const [tick, setTick] = useState(0)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const load = useCallback(loader, deps)
   useEffect(() => {
     let live = true
-    setState((s) => ({ ...s, loading: true, error: null }))
+    setState((s) => (s.owner === load ? { ...s, loading: true, error: null } : { owner: load, loading: true, error: null, data: null }))
     load()
-      .then((data) => live && setState({ loading: false, error: null, data }))
-      .catch((error) => live && setState({ loading: false, error, data: null }))
+      .then((data) => live && setState({ owner: load, loading: false, error: null, data }))
+      .catch((error) => live && setState({ owner: load, loading: false, error, data: null }))
     return () => { live = false }
   }, [load, tick])
   const reload = useCallback(() => setTick((t) => t + 1), [])
-  return { ...state, reload }
+  const current = asyncView(state, load)
+  return { loading: current.loading, error: current.error, data: current.data, reload }
 }
 
 /** Width of an element, kept current with ResizeObserver (charts draw at real pixel size). */

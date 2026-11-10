@@ -115,7 +115,7 @@ function Get-Prop {
 function ConvertTo-Iso {
     param($Value)
     if ($null -eq $Value) { return $null }
-    try { return ([datetime]$Value).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') } catch { return $null }
+    try { return ([datetime]$Value).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture) } catch { return $null }
 }
 
 function Get-RedactedName {
@@ -724,7 +724,7 @@ if ($script:Facts['os'].status -eq 'ok') {
 $document = [ordered]@{
     collector    = 'windows'
     version      = 1
-    collected_at = $script:CollectedAt.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    collected_at = $script:CollectedAt.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
     host         = $hostInfo
     privileged   = $IsAdmin
     redacted     = [bool]$RedactNames

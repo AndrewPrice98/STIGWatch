@@ -670,3 +670,36 @@ def test_symbolic_links_virtual_machines_only_with_hyper_v():
     data["facts"]["user_rights"]["value"]["SeCreateSymbolicLinkPrivilege"] = "*S-1-5-32-544"
     assert results(data)["WN22-UR-000090"].status == NAF
     assert "Win32_Tpm" in COLLECTOR.read_text(encoding="utf-8").split("#>")[0]
+
+
+def test_collector_timestamps_never_use_the_host_culture():
+    text = COLLECTOR.read_text(encoding="utf-8")
+    calls = re.findall(r"\.ToString\('yyyy-MM-ddTHH:mm:ssZ'[^)]*\)", text)
+    assert len(calls) == 2
+    assert all("InvariantCulture" in c for c in calls)
+
+
+@pytest.mark.parametrize("culture", ["fi-FI", "th-TH"])
+def test_collector_timestamp_format_is_culture_independent(culture):
+    """fi-FI writes '.' as the time separator and th-TH uses the Buddhist calendar (year 2569):
+    the collector's own timestamp expression must still give the ISO form the server requires."""
+    import shutil
+
+    shell = os.environ.get("STIGWATCH_TEST_POWERSHELL", "powershell")
+    if shutil.which(shell) is None:
+        pytest.skip("PowerShell not available")
+    expr = re.search(r"\(\[datetime\]\$Value\)\.ToUniversalTime\(\)\.ToString\('yyyy-MM-ddTHH:mm:ssZ'[^)]*\)",
+                     COLLECTOR.read_text(encoding="utf-8")).group(0).replace("$Value", "$v")
+    script = (f"$c = [Globalization.CultureInfo]::GetCultureInfo('{culture}'); "
+              "[Threading.Thread]::CurrentThread.CurrentCulture = $c; "
+              "$v = '2026-11-10T08:05:09Z'; "
+              f"Write-Output ({expr})")
+    out = subprocess.run([shell, "-NoProfile", "-NonInteractive", "-Command", script],
+                         capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "2026-11-10T08:05:09Z"
+    # Prove the culture really does change the format when no culture is passed.
+    bare = expr.replace(", [System.Globalization.CultureInfo]::InvariantCulture", "")
+    out = subprocess.run([shell, "-NoProfile", "-NonInteractive", "-Command", script.replace(expr, bare)],
+                         capture_output=True, text=True, timeout=60)
+    assert out.stdout.strip() != "2026-11-10T08:05:09Z"

@@ -24,7 +24,7 @@
 # dirname, id, hostname, uname, date, mktemp, rm (temporary directory only), iconv,
 # sha1sum, md5sum, dpkg-query -W, systemctl show, systemd-detect-virt, sshd -T,
 # timedatectl show, auditctl -l, auditctl -s, passwd -S root, ufw status, aa-status,
-# dmesg, lsblk, gsettings get.
+# dmesg, lsblk, env (only to run gsettings get with a private runtime directory).
 
 set -u
 umask 077
@@ -788,7 +788,10 @@ collect_gui() {
                     "org.gnome.desktop.screensaver lock-delay" \
                     "org.gnome.desktop.session idle-delay"; do
             # shellcheck disable=SC2086
-            gsettings get $pair > "$TMP/gs.out" 2> "$TMP/gs.err"
+            # dconf would otherwise create its shm file under XDG_RUNTIME_DIR (or ~/.cache) and
+            # GLib may try to autolaunch a session bus: point both at the private temp dir and
+            # disable the bus, so nothing outside $TMP is written and nothing is started.
+            env XDG_RUNTIME_DIR="$TMP" XDG_CACHE_HOME="$TMP" DBUS_SESSION_BUS_ADDRESS=disabled: gsettings get $pair > "$TMP/gs.out" 2> "$TMP/gs.err"
             rc=$?
             gs_ok=false
             if [ "$rc" -eq 0 ] && ! grep -q -i "memory" "$TMP/gs.err"; then gs_ok=true; fi

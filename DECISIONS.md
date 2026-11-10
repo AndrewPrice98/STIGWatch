@@ -274,4 +274,5 @@ The two skips are Linux-only (the full collector run and the permission-denied p
   - the collector under `pwsh` and under `powershell`, in separate steps, each native exit code checked;
   - `collect-parse windows --min-ok 15` and `scan` for each output;
   - both outputs uploaded as the `windows-collector-output` artifact.
+- The job also writes a summary of each output (facts read, unavailable facts with reasons, scan counts) as a workflow annotation, readable from the public check-run annotations.
 - The `frontend` job is gated per step with `if: hashFiles('package.json') != ''` (`hashFiles()` is not available in a job-level `if`), so it passes as a no-op until Task 9 adds the dashboard.

@@ -16,6 +16,7 @@ import logging
 import re
 import sqlite3
 import threading
+import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Any, Iterator, Literal
 
@@ -81,6 +82,8 @@ async def security_headers(request: Request, call_next):
 
 
 MULTIPART_OVERHEAD = 64 * 1024
+DEFAULT_BODY_LIMIT = 64 * 1024     # every JSON route except the scan uploads
+_UPLOAD_PATH = re.compile(r"^/api/(?:scans|hosts/[0-9]{1,9}/scans)/?$")
 
 
 class _TooLarge(Exception):
@@ -98,12 +101,15 @@ class BodyLimitMiddleware:
         self.app = app
 
     @staticmethod
-    def _limit() -> int:
-        return config.max_upload_bytes() + MULTIPART_OVERHEAD
+    def _limit(path: str) -> int:
+        if _UPLOAD_PATH.match(path):
+            return config.max_upload_bytes() + MULTIPART_OVERHEAD
+        return DEFAULT_BODY_LIMIT
 
     @staticmethod
-    async def _reject(send) -> None:
-        message = f"Request too large (max {config.max_upload_bytes() // (1024 * 1024)} MB)"
+    async def _reject(send, limit: int) -> None:
+        message = (f"Request too large (max {limit // (1024 * 1024)} MB)" if limit >= 1024 * 1024
+                   else f"Request too large (max {limit // 1024} KB)")
         await JSONResponse({"detail": message}, status_code=413, headers=SECURITY_HEADERS)(
             {"type": "http"}, _noop_receive, send)
 
@@ -111,10 +117,10 @@ class BodyLimitMiddleware:
         if scope["type"] != "http" or scope["method"] not in ("POST", "PUT", "PATCH"):
             await self.app(scope, receive, send)
             return
-        limit = self._limit()
+        limit = self._limit(scope.get("path", ""))
         declared = dict(scope["headers"]).get(b"content-length", b"")
         if declared.isdigit() and int(declared) > limit:
-            await self._reject(send)
+            await self._reject(send, limit)
             return
 
         received = 0
@@ -143,7 +149,7 @@ class BodyLimitMiddleware:
         except _TooLarge:
             pass
         if exceeded and not sent_any:
-            await self._reject(send)
+            await self._reject(send, limit)
 
 
 async def _noop_receive():
@@ -157,28 +163,41 @@ app.add_middleware(BodyLimitMiddleware)
 
 _seed_lock = threading.Lock()
 _seeded: set[str] = set()
+_seed_failed_until: dict[str, float] = {}
+SEED_RETRY_SECONDS = 60.0
 
 
-def _lazy_seed() -> None:
-    """Seed the demo fleet once per database, on the first request. Serverless hosts may
-    never run the lifespan hook, so the first request does it (under a lock; seeding is
-    itself idempotent, so concurrent processes cannot double-seed)."""
+def _lazy_seed() -> bool:
+    """Seed the demo fleet once per process and database, on the first request. Serverless
+    hosts may never run the lifespan hook, so the first request does it (double-checked under
+    a lock; seeding is itself idempotent, so concurrent processes cannot double-seed).
+    A failure is logged once and remembered for SEED_RETRY_SECONDS, during which this returns
+    False without trying again. Returns True when the data is available."""
     key = str(config.db_path())
     if key in _seeded:
-        return
+        return True
+    if _seed_failed_until.get(key, 0.0) > time.monotonic():
+        return False
     with _seed_lock:
         if key in _seeded:
-            return
+            return True
+        if _seed_failed_until.get(key, 0.0) > time.monotonic():
+            return False
         try:
             demo.ensure_seeded()
-            _seeded.add(key)
         except Exception:
-            log.exception("Demo seeding failed; serving the request anyway")
+            _seed_failed_until[key] = time.monotonic() + SEED_RETRY_SECONDS
+            log.exception("Demo seeding failed; not retrying for %d s", SEED_RETRY_SECONDS)
+            return False
+        _seed_failed_until.pop(key, None)
+        _seeded.add(key)
+        return True
 
 
 def get_conn() -> Iterator[sqlite3.Connection]:
-    if config.demo_mode():
-        _lazy_seed()
+    if config.demo_mode() and not _lazy_seed():
+        raise HTTPException(503, "Demo data is not available yet",
+                            headers={"Retry-After": str(int(SEED_RETRY_SECONDS))})
     conn = db.connect()
     try:
         yield conn
@@ -315,10 +334,9 @@ def _scan_out(conn: sqlite3.Connection, scan: dict) -> dict:
 
 
 def _latest_scan(conn: sqlite3.Connection, host_id: int) -> dict | None:
-    row = conn.execute("SELECT id, host_id, benchmark_id, benchmark_release, collected_at, uploaded_at "
-                       "FROM scans WHERE host_id = ? ORDER BY collected_at DESC, id DESC LIMIT 1",
-                       (host_id,)).fetchone()
-    return dict(row) if row else None
+    row = conn.execute(f"SELECT {db._SCAN_COLUMNS} FROM scans WHERE host_id = ? "
+                       "ORDER BY collected_at DESC, id DESC LIMIT 1", (host_id,)).fetchone()
+    return db._scan_dict(row) if row else None
 
 
 def _host_summary(conn: sqlite3.Connection, host: dict) -> dict:
@@ -670,7 +688,7 @@ def _ingest(conn: sqlite3.Connection, parsed: Any, host: dict | None) -> dict:
     n_alerts = conn.execute("SELECT COUNT(*) FROM alerts WHERE scan_id = ?", (scan_id,)).fetchone()[0]
     return {"scan_id": scan_id, "host_id": host_id, "host": name, "host_created": created,
             "collected_at": when, "benchmark": bench.benchmark_id, "release": bench.label,
-            "out_of_order": out_of_order, "alerts_recomputed_for_scan": recomputed,
+            "privileged": raw.get("privileged") is True, "out_of_order": out_of_order, "alerts_recomputed_for_scan": recomputed,
             "alerts_raised": n_alerts, **_counts(conn, scan_id), "drift": _drift_out(conn, scan_id)}
 
 

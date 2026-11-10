@@ -399,3 +399,116 @@ def test_demo_guest_lazy_seed_and_read_shapes(db_file, monkeypatch):
     c2 = TestClient(api.app)         # no context manager: the lifespan hook does not run
     assert len(c2.get("/api/hosts").json()) == 14
     assert len(c2.get("/api/hosts").json()) == 14
+
+
+# ---------------------------------------------------------------- fix round 1
+
+def test_login_body_is_capped_at_64k_but_uploads_keep_the_big_cap(client, anon):
+    r = anon.post("/api/auth/login", content=b"x" * (1024 * 1024),
+                  headers={"content-type": "application/json"})
+    assert r.status_code == 413 and r.headers["x-content-type-options"] == "nosniff"
+    r = anon.post("/api/auth/login", content=(b"y" * 8192 for _ in range(16)),   # chunked, 128 KB
+                  headers={"content-type": "application/json"})
+    assert r.status_code == 413
+    # a sibling path does not get the upload cap
+    assert client.post("/api/scans-extra", content=b"x" * (1024 * 1024)).status_code == 413
+    assert client.post("/api/scans/x", content=b"x" * (1024 * 1024)).status_code == 413
+    assert client.put("/api/hosts/1/rules/UBTU-22-211015/comment", content=b"x" * 100_000).status_code == 413
+    # a valid upload larger than 64 KiB is accepted (pretty-printed: short lines), also with a slash
+    raw = fixture("linux-compliant")
+    raw["facts"]["padding"] = {"status": "ok", "value": ["row %d" % i for i in range(20000)]}
+    big = json.dumps(raw, indent=1).encode()
+    assert len(big) > 300_000
+    r = client.post("/api/scans", content=big, headers={"content-type": "application/json"})
+    assert r.status_code == 201
+    raw["collected_at"] = "2026-11-09T20:00:00Z"
+    r = client.post("/api/scans/", content=json.dumps(raw, indent=1).encode(),
+                    headers={"content-type": "application/json"})
+    assert r.status_code == 201
+    hid = r.json()["host_id"]
+    r = client.post(f"/api/hosts/{hid}/scans", files={"file": ("c.json", json.dumps(raw, indent=1))})
+    assert r.status_code == 201
+
+
+def test_413_does_not_read_the_body(anon):
+    import asyncio
+    reads = []
+
+    async def run():
+        sent = []
+
+        async def receive():
+            reads.append(1)
+            return {"type": "http.request", "body": b"x", "more_body": True}
+
+        async def send(m):
+            sent.append(m)
+        scope = {"type": "http", "method": "POST", "path": "/api/auth/login", "headers": [
+            (b"content-length", str(50 * 1024 * 1024).encode())]}
+        await api.BodyLimitMiddleware(lambda *a: None)(scope, receive, send)
+        return sent
+    sent = asyncio.run(run())
+    assert sent[0]["status"] == 413 and not reads
+
+
+def _count_seeds(monkeypatch, fail=False):
+    calls = []
+
+    def fake():
+        calls.append(1)
+        if fail:
+            raise RuntimeError("disk full")
+    monkeypatch.setattr(api.demo, "ensure_seeded", fake)
+    return calls
+
+
+def test_demo_seed_runs_once_per_database(db_file, monkeypatch):
+    monkeypatch.setenv("STIGWATCH_DEMO", "1")
+    api._seeded.clear()
+    api._seed_failed_until.clear()
+    calls = _count_seeds(monkeypatch)
+    c = TestClient(api.app)
+    for _ in range(6):
+        assert c.get("/api/hosts").status_code == 200
+    assert len(calls) == 1
+
+
+def test_demo_seed_failure_is_cached_then_retried(db_file, monkeypatch):
+    monkeypatch.setenv("STIGWATCH_DEMO", "1")
+    api._seeded.clear()
+    api._seed_failed_until.clear()
+    calls = _count_seeds(monkeypatch, fail=True)
+    clock = [1000.0]
+    monkeypatch.setattr(api.time, "monotonic", lambda: clock[0])
+    c = TestClient(api.app)
+    for _ in range(5):
+        r = c.get("/api/hosts")
+        assert r.status_code == 503 and r.json() == {"detail": "Demo data is not available yet"}
+        assert r.headers["retry-after"] == "60"
+    assert len(calls) == 1                                  # one attempt within the TTL
+    assert c.get("/api/health").status_code == 200          # non-data routes still work
+    clock[0] += 61
+    assert c.get("/api/hosts").status_code == 503
+    assert len(calls) == 2                                  # retried after the TTL
+    clock[0] += 61
+    monkeypatch.setattr(api.demo, "ensure_seeded", lambda: calls.append(1))
+    assert c.get("/api/hosts").status_code == 200 and len(calls) == 3
+
+
+def test_scan_objects_expose_privileged(client):
+    priv, unpriv = fixture("linux-compliant"), fixture("linux-unprivileged")
+    assert priv.get("privileged") is True and unpriv.get("privileged") is False
+    r = upload(client, {**priv, "collected_at": "2026-11-08T10:00:00Z"}).json()
+    assert r["privileged"] is True
+    unpriv["host"]["name"] = priv["host"]["name"]
+    r2 = upload(client, {**unpriv, "collected_at": "2026-11-09T10:00:00Z"}).json()
+    assert r2["privileged"] is False
+    hid = r["host_id"]
+    scans = client.get(f"/api/hosts/{hid}/scans").json()
+    assert [s["privileged"] for s in scans] == [False, True]          # newest first
+    assert client.get(f"/api/hosts/{hid}").json()["latest_scan"]["privileged"] is False
+    res = client.get(f"/api/scans/{r['scan_id']}/results").json()
+    assert res["scan"]["privileged"] is True
+    # missing / null / non-boolean flag -> False, never an error
+    nulled = {**priv, "collected_at": "2026-11-10T01:00:00Z", "privileged": None}
+    assert upload(client, nulled).json()["privileged"] is False

@@ -233,12 +233,21 @@ def add_scan(conn: sqlite3.Connection, host_id: int, collector_json: dict,
     return scan_id
 
 
-_SCAN_COLUMNS = "id, host_id, benchmark_id, benchmark_release, collected_at, uploaded_at"
+# ``privileged`` is the collector's own statement that it ran as root / Administrator
+# (top-level ``privileged`` in the stored collector JSON); missing or null counts as False.
+_SCAN_COLUMNS = ("id, host_id, benchmark_id, benchmark_release, collected_at, uploaded_at, "
+                 "COALESCE(json_extract(raw_json, '$.privileged') = 1, 0) AS privileged")
+
+
+def _scan_dict(row: sqlite3.Row) -> dict:
+    out = dict(row)
+    out["privileged"] = bool(out["privileged"])
+    return out
 
 
 def get_scan(conn: sqlite3.Connection, scan_id: int) -> dict | None:
     row = conn.execute(f"SELECT {_SCAN_COLUMNS} FROM scans WHERE id = ?", (scan_id,)).fetchone()
-    return dict(row) if row else None
+    return _scan_dict(row) if row else None
 
 
 def get_raw(conn: sqlite3.Connection, scan_id: int) -> dict | None:
@@ -249,7 +258,7 @@ def get_raw(conn: sqlite3.Connection, scan_id: int) -> dict | None:
 def list_scans(conn: sqlite3.Connection, host_id: int) -> list[dict]:
     rows = conn.execute(f"SELECT {_SCAN_COLUMNS} FROM scans WHERE host_id = ? "
                         "ORDER BY collected_at, id", (host_id,))
-    return [dict(r) for r in rows]
+    return [_scan_dict(r) for r in rows]
 
 
 def previous_scan_id(conn: sqlite3.Connection, scan_id: int) -> int | None:

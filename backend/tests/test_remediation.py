@@ -381,17 +381,27 @@ def test_db_refuses_unsafe_host_names(conn):
     assert db.add_host(conn, "x" * 253, "linux", "ubuntu-22.04")
 
 
-def test_sshd_include_regexp_matches_ubuntu_default():
-    import re, subprocess
-    text = remediation.ansible_playbook({"name": "h"}, [{"stig_id": "UBTU-22-255025", "status": "Open"}],
-                                        __import__("stigwatch.benchmarks", fromlist=["x"]).load_benchmark("ubuntu-22.04"))
-    play = parse(text)
-    if "pre_tasks" not in play:
-        return
-    pattern = play["pre_tasks"][0]["ansible.builtin.command"]["argv"][2]
-    rx = re.compile(pattern.replace("[[:space:]]", r"\s"), re.I)
-    assert rx.search("Include /etc/ssh/sshd_config.d/*.conf")
-    assert not rx.search("#Include /etc/ssh/sshd_config.d/*.conf")
+def test_sshd_include_check_behaves_on_real_files(benches, tmp_path):
+    import shutil
+    import subprocess
+    if shutil.which("grep") is None or __import__("sys").platform == "win32":
+        pytest.skip("needs GNU grep on Linux (the MSYS grep on Windows re-parses backslashes)")
+    bench = benches["ubuntu-22.04"]
+    play = parse(remediation.ansible_playbook({"name": "h"}, everything_open(bench), bench))
+    argv = list(play["pre_tasks"][0]["ansible.builtin.command"]["argv"])
+    assert argv[0] == "grep" and argv[-1] == "/etc/ssh/sshd_config"
+
+    def rc(content):
+        f = tmp_path / "sshd_config"
+        f.write_text(content, encoding="utf-8")
+        return subprocess.run(argv[:-1] + [str(f)], capture_output=True,
+                              env={**__import__("os").environ, "MSYS2_ARG_CONV_EXCL": "*"}).returncode
+
+    assert rc("Include /etc/ssh/sshd_config.d/*.conf\nPort 22\n") == 0
+    assert rc("Port 22\n  include /etc/ssh/sshd_config.d/*.conf\n") == 0
+    assert rc("#Include /etc/ssh/sshd_config.d/*.conf\n") == 1
+    assert rc("Port 22\nInclude /etc/ssh/other.d/*.conf\n") == 1
+    assert rc("") == 1
 
 
 def test_playbook_lines_stay_within_ansible_lint_limit(benches):

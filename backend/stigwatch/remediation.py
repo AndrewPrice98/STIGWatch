@@ -848,16 +848,15 @@ def _windows_steps(sid: str, rule: Rule, leaves: list[Leaf], obs: dict | None = 
             keep: list[str] = []
             if obs is None:
                 raise Unsupported("the current principals of this right are not known")
-            if obs is not None:
-                current = obs.get(engine.show_path(("user_rights", key[1])))
-                if not isinstance(current, list) or not all(
-                        isinstance(x, str) and _SID_RE.fullmatch(x) for x in current):
-                    raise Unsupported("the current principals of this right are not known")
-                excess = [x for x in current if x not in allowed]
-                if any(_ORG_SID_RE.match(x) for x in excess):
-                    raise Unsupported("the excess includes domain, service or virtual-account SIDs; "
-                                      "review who holds the right first")
-                keep = [x for x in current if x in allowed]
+            current = obs.get(engine.show_path(("user_rights", key[1])))
+            if not isinstance(current, list) or not all(
+                    isinstance(x, str) and _SID_RE.fullmatch(x) for x in current):
+                raise Unsupported("the current principals of this right are not known")
+            excess = [x for x in current if x not in allowed]
+            if any(_ORG_SID_RE.match(x) for x in excess):
+                raise Unsupported("the excess includes domain, service or virtual-account SIDs; "
+                                  "review who holds the right first")
+            keep = [x for x in current if x in allowed]
             rights.append(f"{key[1]} = {','.join('*' + x for x in keep)}")
         elif kind == "audit":
             audits.setdefault(key[1], set()).update(f for f, _, _ in cons.entries)

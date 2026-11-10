@@ -2,7 +2,7 @@
 
 A DISA STIG compliance scanner for **Ubuntu 22.04 LTS** (STIG V2R10, 191 rules) and **Windows Server 2022** (STIG V2R11, 277 rules). Read-only collectors gather facts from a host; a declarative check engine turns them into per-rule results; STIGWatch tracks drift between scans by STIG ID, generates remediation you review and run yourself, and exports STIG Viewer checklists (CKL, CKLB) and fleet reports.
 
-**Live demo:** https://stigwatch.vercel.app/ (placeholder: not deployed yet). The demo is a fictional fleet of 14 invented hosts with 8 weekly scans each; visitors browse read-only.
+**Live demo:** https://stigwatch-demo.vercel.app/. The demo is a fictional fleet of 14 invented hosts with 8 weekly scans each; visitors browse read-only.
 
 ![STIGWatch fleet overview](docs/screenshots/fleet.png)
 

@@ -113,8 +113,35 @@ def _cmd_scan(args: argparse.Namespace) -> int:
 
 
 def _cmd_coverage(args: argparse.Namespace) -> int:
+    from . import coverage_doc
     from .checks import engine
 
+    if args.md or args.write or args.check:
+        if args.benchmark:
+            print("coverage failed: --md, --write and --check cover both benchmarks; leave the benchmark out",
+                  file=sys.stderr)
+            return 1
+        try:
+            if args.check:
+                stale = coverage_doc.stale_files()
+                if stale:
+                    print(f"coverage tables are out of date in {', '.join(stale)}; "
+                          "run: python -m stigwatch coverage --write", file=sys.stderr)
+                    return 1
+                print("coverage tables are current")
+            elif args.write:
+                coverage_doc.write()
+                print(f"wrote {coverage_doc.COVERAGE_DOC} and the coverage section of {coverage_doc.README}")
+            else:
+                sys.stdout.write(coverage_doc.full_markdown())
+        except (ValueError, OSError, benchmarks.BenchmarkError) as exc:
+            print(f"coverage failed: {exc}", file=sys.stderr)
+            return 1
+        return 0
+    if not args.benchmark:
+        print("coverage failed: give a benchmark id (ubuntu-22.04, windows-server-2022) or --md/--write/--check",
+              file=sys.stderr)
+        return 1
     try:
         lines = engine.coverage_lines(args.benchmark)
     except (ValueError, benchmarks.BenchmarkError) as exc:
@@ -180,6 +207,100 @@ def _cmd_create_admin(args: argparse.Namespace) -> int:
     return 0
 
 
+DEFAULT_DEMO_DB = Path(__file__).resolve().parent.parent / "data" / "demo.db"
+
+
+def _server_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--host", default="127.0.0.1", help="address to listen on (default 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=8000, help="port (default 8000)")
+    parser.add_argument("--reload", action="store_true", help="restart when the code changes (development)")
+
+
+def _serve(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    uvicorn.run("stigwatch.api:app", host=args.host, port=args.port, reload=args.reload)
+    return 0
+
+
+def _remove_db(path: Path) -> None:
+    for candidate in (path, path.with_name(path.name + "-wal"), path.with_name(path.name + "-shm")):
+        candidate.unlink(missing_ok=True)
+
+
+def _demo(args: argparse.Namespace) -> int:
+    import os
+
+    path = Path(args.db or DEFAULT_DEMO_DB).resolve()
+    if args.check:
+        return _demo_check(path)
+    # The demo always runs on its own database file, never on STIGWATCH_DB from backend/.env.
+    os.environ["STIGWATCH_DB"] = str(path)
+    if args.reset:
+        _remove_db(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    from . import db, demo
+
+    conn = db.connect(path)
+    try:
+        if demo.seed(conn):
+            print(f"Loaded the fictional demo fleet into {path}")
+        else:
+            print(f"{path} already holds hosts; left it as it is (use --reset to reload)")
+        rows = conn.execute("SELECT os, COUNT(*) FROM hosts GROUP BY os ORDER BY os").fetchall()
+        scans = conn.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
+        print(f"{sum(r[1] for r in rows)} hosts ({', '.join(f'{r[1]} {r[0]}' for r in rows)}), {scans} scans")
+    finally:
+        conn.close()
+    if args.serve:
+        # Demo mode: read-only guests unless an admin signs in (see create-admin).
+        os.environ["STIGWATCH_DEMO"] = "true"
+        return _serve(args)
+    return 0
+
+
+def _demo_check(path: Path) -> int:
+    """Seed a scratch database from the committed fixture and require the stored open CAT
+    counts of every host and week to equal the counts recorded in the fixture."""
+    import os
+    import tempfile
+
+    from . import db, demo
+
+    fixture = demo.load_fixture()
+    previous = os.environ.get("STIGWATCH_DB")
+    problems: list[str] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        scratch = Path(tmp) / "check.db"
+        os.environ["STIGWATCH_DB"] = str(scratch)
+        try:
+            conn = db.connect(scratch)
+            try:
+                demo.seed(conn)
+                hosts = db.list_hosts(conn)
+                for host in hosts:
+                    got = [[t["open"]["CAT I"], t["open"]["CAT II"], t["open"]["CAT III"]]
+                           for t in db.host_trend(conn, host["id"])]
+                    if got != fixture["expected"].get(host["name"]):
+                        problems.append(f"{host['name']}: stored counts differ from the fixture")
+            finally:
+                conn.close()
+        finally:
+            if previous is None:
+                os.environ.pop("STIGWATCH_DB", None)
+            else:
+                os.environ["STIGWATCH_DB"] = previous
+    if len(hosts) != len(fixture["hosts"]):
+        problems.append(f"seeded {len(hosts)} hosts, the fixture has {len(fixture['hosts'])}")
+    for problem in problems:
+        print(f"demo check failed: {problem}", file=sys.stderr)
+    if not problems:
+        print(f"demo fleet seeds cleanly: {len(hosts)} hosts, {fixture['weeks']} weekly scans each, "
+              "open counts match the fixture")
+    return 1 if problems else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="stigwatch")
     sub = parser.add_subparsers(dest="command")
@@ -206,8 +327,26 @@ def build_parser() -> argparse.ArgumentParser:
     sc.set_defaults(func=_cmd_scan)
 
     cv = sub.add_parser("coverage", help="automated and manual rule counts by CAT")
-    cv.add_argument("benchmark", help="benchmark id, e.g. ubuntu-22.04")
+    cv.add_argument("benchmark", nargs="?", help="benchmark id, e.g. ubuntu-22.04")
+    cv.add_argument("--md", action="store_true", help="print the generated coverage tables (markdown)")
+    cv.add_argument("--write", action="store_true", help="update docs/COVERAGE.md and the README section")
+    cv.add_argument("--check", action="store_true",
+                    help="fail if docs/COVERAGE.md or the README section is out of date")
     cv.set_defaults(func=_cmd_coverage)
+
+    serve = sub.add_parser("serve", help="run the API with uvicorn (the dashboard runs separately: npm run dev)")
+    _server_args(serve)
+    serve.set_defaults(func=_serve)
+
+    demo = sub.add_parser("demo", help="load the fictional demo fleet into a separate database")
+    demo.add_argument("--db", type=Path, default=None, metavar="PATH",
+                      help="database file (default backend/data/demo.db)")
+    demo.add_argument("--reset", action="store_true", help="delete the database first and reload the fleet")
+    demo.add_argument("--serve", action="store_true", help="then run the API in demo mode (read-only guests)")
+    demo.add_argument("--check", action="store_true",
+                      help="seed a scratch database and fail if the stored results differ from the fixture")
+    _server_args(demo)
+    demo.set_defaults(func=_demo)
 
     admin = sub.add_parser("create-admin", help="set the dashboard login (writes backend/.env)")
     admin.add_argument("--username", default="admin")

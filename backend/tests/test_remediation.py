@@ -392,3 +392,9 @@ def test_sshd_include_regexp_matches_ubuntu_default():
     rx = re.compile(pattern.replace("[[:space:]]", r"\s"), re.I)
     assert rx.search("Include /etc/ssh/sshd_config.d/*.conf")
     assert not rx.search("#Include /etc/ssh/sshd_config.d/*.conf")
+
+
+def test_playbook_lines_stay_within_ansible_lint_limit(benches):
+    bench = benches["ubuntu-22.04"]
+    text = remediation.ansible_playbook({"name": "h"}, everything_open(bench), bench)
+    assert max(len(line) for line in text.splitlines()) <= 155

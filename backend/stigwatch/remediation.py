@@ -645,10 +645,8 @@ def ansible_playbook(host: Any, open_results: Any, benchmark: Benchmark) -> str:
         {"name": "Load audit rules", "ansible.builtin.command": "augenrules --load",
          "register": "stigwatch_augenrules", "changed_when": True, "failed_when": False},
         {"name": "Report audit rules that need a reboot",
-         "ansible.builtin.debug": {"msg": "augenrules could not load the rules (the audit "
-                                          "configuration is immutable, -e 2, or the load failed). "
-                                          "Reboot the host to activate them and check the output "
-                                          "of augenrules --check."},
+         "ansible.builtin.debug": {"msg": "augenrules could not load the rules (immutable, -e 2). "
+                                          "Reboot the host to activate them."},
          "listen": "Load audit rules",
          "when": "stigwatch_augenrules is defined and stigwatch_augenrules.rc | default(0) != 0"},
         {"name": "Reload auditd configuration",
@@ -672,10 +670,8 @@ def ansible_playbook(host: Any, open_results: Any, benchmark: Benchmark) -> str:
             "name": "Require that sshd_config includes sshd_config.d/*.conf",
             "ansible.builtin.assert": {
                 "that": ["stigwatch_sshd_include.rc == 0"],
-                "fail_msg": "/etc/ssh/sshd_config has no Include of /etc/ssh/sshd_config.d/*.conf, "
-                            "so the sshd settings this play writes to sshd_config.d/00-stigwatch.conf "
-                            "would not take effect. Add that Include line (Ubuntu 22.04 ships it) "
-                            "and run the play again.",
+                "fail_msg": "sshd_config lacks Include /etc/ssh/sshd_config.d/*.conf; "
+                            "add it so the sshd settings of this play take effect.",
                 "quiet": True},
             "tags": ["always"],
         }, {

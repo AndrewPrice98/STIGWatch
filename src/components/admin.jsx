@@ -6,6 +6,15 @@ import { Icon, useSession } from './ui.jsx'
 
 const HOST_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$/
 
+export const DEMO_WRITE_NOTICE = 'Demo: changes you make are visible to other visitors until the demo resets.'
+
+/** Persistent notice beside every admin control while the hosted demo is running and you are not a guest. */
+export function DemoWriteNotice() {
+  const { demo, guest } = useSession()
+  if (!demo || guest) return null
+  return <p className="notice-inline small" role="note"><Icon name="info" size={13} /> {DEMO_WRITE_NOTICE}</p>
+}
+
 /** Upload one collector JSON file. For writers only; the server enforces that with a 403. */
 export function UploadScan({ hostId, onDone, heading = 'Upload a scan' }) {
   const [file, setFile] = useState(null)
@@ -14,11 +23,16 @@ export function UploadScan({ hostId, onDone, heading = 'Upload a scan' }) {
   const [done, setDone] = useState(null)
   const input = useRef(null)
   const id = useId()
+  const { maxUploadMb } = useSession()
 
   async function submit(e) {
     e.preventDefault()
     if (busy) return
     if (!file) { setError('Choose a collector output file (.json) first.'); return }
+    if (maxUploadMb && file.size > maxUploadMb * 1024 * 1024) {
+      setError(`${file.name} is ${formatBytes(file.size)}, over this server's ${maxUploadMb} MB upload limit. Collector output is normally well under a megabyte; check it is the right file.`)
+      return
+    }
     setBusy(true)
     setError('')
     setDone(null)
@@ -49,6 +63,7 @@ export function UploadScan({ hostId, onDone, heading = 'Upload a scan' }) {
           onChange={(e) => { setFile(e.target.files?.[0] || null); setError(''); setDone(null) }} />
       </label>
       {file && <p className="muted small">{file.name} · {formatBytes(file.size)}</p>}
+      <DemoWriteNotice />
       <div className="form-row">
         <button type="submit" className="btn primary small" aria-disabled={busy ? 'true' : undefined}>
           {busy ? 'Uploading…' : 'Upload scan'}
@@ -105,6 +120,7 @@ export function AddHost({ onDone }) {
   return (
     <form className="admin-form" onSubmit={submit} aria-labelledby={`${id}-h`}>
       <h3 id={`${id}-h`}><Icon name="plus" size={16} /> Add a host</h3>
+      <DemoWriteNotice />
       <div className="form-grid">
         <label className="field">
           <span>Host name</span>

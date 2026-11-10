@@ -144,7 +144,8 @@ function App() {
   const check = useCallback(async () => {
     try {
       const health = await api.health()
-      const base = { version: health.version, demo: health.demo, authConfigured: health.auth_configured }
+      const base = { version: health.version, demo: health.demo, authConfigured: health.auth_configured,
+        maxUploadMb: health.max_upload_mb }
       if (!health.guest && !health.auth_configured) return setState({ phase: 'unconfigured' })
       let me
       try {
@@ -174,7 +175,7 @@ function App() {
 
   const session = useMemo(() => (state.phase === 'user' ? {
     user: state.user, guest: state.guest, demo: state.demo, version: state.version,
-    authConfigured: state.authConfigured, signIn,
+    authConfigured: state.authConfigured, maxUploadMb: state.maxUploadMb, signIn,
   } : null), [state, signIn])
 
   async function logout() {

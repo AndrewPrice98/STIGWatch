@@ -35,8 +35,13 @@ async function loadWeek(week) {
   return { merged, titles }
 }
 
-function AlertList({ alerts, weekByScan }) {
+function AlertList({ alerts: unsorted, weekByScan }) {
   const [all, setAll] = useState(false)
+  // The API orders by when the alert was created; "newest first" means newest scan, so sort here.
+  const alerts = useMemo(() => {
+    const when = (a) => String(a.collected_at || a.created_at || '')
+    return [...unsorted].sort((x, y) => when(y).localeCompare(when(x)) || y.id - x.id)
+  }, [unsorted])
   const shown = all ? alerts : alerts.slice(0, ALERTS_SHOWN)
   if (!alerts.length) return <Empty>No CAT I regression has been raised: no CAT I rule went from closed to Open between two scans.</Empty>
   return (

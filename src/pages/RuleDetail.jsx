@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api.js'
+import { DemoWriteNotice } from '../components/admin.jsx'
 import { formatDate, formatDateTime, formatObserved, plural, ranUnprivileged, splitStigText } from '../lib.js'
 import {
   CatBadge, ErrorState, FormMessage, Icon, Loading, PageHead, StatusChip, useAsync, usePageTitle, useSession,
@@ -128,6 +129,7 @@ function Comment({ hostId, stigId, comment, onSaved }) {
   }
   return (
     <form onSubmit={save} className="comment-form">
+      <DemoWriteNotice />
       <label className="field">
         <span>Comment <span className="muted small">(kept with this host and rule across scans)</span></span>
         <textarea rows={4} maxLength={5000} value={text} onChange={(e) => { setText(e.target.value); setMessage(null) }}

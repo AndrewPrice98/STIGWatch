@@ -5,9 +5,11 @@
 // "stigwatch:unauthorized" event and the app returns to the sign-in screen.
 
 export class ApiError extends Error {
-  constructor(message, status, retryAfter = null) {
+  constructor(message, status, retryAfter = null, fromApi = false) {
     super(message)
     this.status = status
+    /** True when message is the API's own JSON "detail"; false for a proxy or platform error page. */
+    this.fromApi = fromApi
     /** Seconds from a Retry-After header (503 while the demo data is being prepared), or null. */
     this.retryAfter = retryAfter
   }
@@ -22,9 +24,11 @@ async function send_(path, options) {
   }
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`.trim()
+    let fromApi = false
     try {
       const body = await res.json()
       if (body.detail) {
+        fromApi = true
         detail = typeof body.detail === 'string'
           ? body.detail
           : body.detail.map?.((d) => d.msg).join('; ') || JSON.stringify(body.detail)
@@ -34,7 +38,7 @@ async function send_(path, options) {
       window.dispatchEvent(new Event('stigwatch:unauthorized'))
     }
     const retry = Number(res.headers.get('Retry-After'))
-    throw new ApiError(detail, res.status, Number.isFinite(retry) && retry > 0 ? retry : null)
+    throw new ApiError(detail, res.status, Number.isFinite(retry) && retry > 0 ? retry : null, fromApi)
   }
   return res
 }

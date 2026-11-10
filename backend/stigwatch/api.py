@@ -256,7 +256,8 @@ def _need_bench(benchmark_id: str) -> Benchmark:
 @app.get("/api/health")
 def health():
     return {"status": "ok", "version": __version__, "auth_configured": auth.is_configured(),
-            "demo": config.demo_mode(), "guest": config.guest_enabled()}
+            "demo": config.demo_mode(), "guest": config.guest_enabled(),
+            "max_upload_mb": config.max_upload_bytes() // (1024 * 1024)}
 
 
 class LoginRequest(BaseModel):

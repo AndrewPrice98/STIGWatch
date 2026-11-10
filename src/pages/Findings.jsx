@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api.js'
 import { NoData } from '../components/admin.jsx'
@@ -58,6 +58,7 @@ export default function Findings() {
     for (const h of scannedHosts(data?.hosts || [])) counts[h.os] = (counts[h.os] || 0) + 1
     return counts
   }, [data])
+  useEffect(() => { setLimit(PAGE) }, [filters.q, filters.cat, filters.os])
   const visible = shown.slice(0, limit)
 
   return (

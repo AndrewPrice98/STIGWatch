@@ -472,6 +472,7 @@ select { padding-right: 28px; }
 .drift-zero li { display: inline-flex; align-items: center; gap: 5px; }
 .drift-zero strong { color: var(--text-2); }
 .compact-state { padding: 10px 14px; font-size: 0.9rem; }
+.notice-inline { display: flex; align-items: flex-start; gap: 6px; margin: 4px 0; padding: 6px 10px; border-left: 3px solid var(--warn); background: var(--warn-bg); border-radius: 4px; }
 .read-only-note { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0; }
 
 /* -- rule detail ------------------------------------------------------------------------- */

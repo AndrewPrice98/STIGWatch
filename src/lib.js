@@ -508,7 +508,13 @@ export function formatBytes(n) {
 export function writeErrorMessage(err, what = 'The request') {
   const status = err?.status
   if (status === 403) return 'This demo is read-only: only an admin can make changes. Sign in as admin to continue.'
-  if (status === 413) return `${err.message || 'The file is too large.'} Collector output is normally well under a megabyte; check it is the right file.`
+  if (status === 413) {
+    // The API's own 413 names its limit; a platform 413 (for example Vercel's plain-text
+    // FUNCTION_PAYLOAD_TOO_LARGE) has no usable text, so a fixed sentence is shown instead.
+    const lead = err.fromApi && err.message ? err.message : 'The file is larger than the server accepts.'
+    return `${lead} Collector output is normally well under a megabyte; check it is the right file.`
+  }
+  if (status === 502 || status === 504) return 'The server or gateway did not answer. Try again.'
   if (status === 503) return 'The server is not ready yet (the demo data is still being prepared). Wait a few seconds and try again.'
   if (status === 401) return 'Your session has expired. Sign in again.'
   if (status === 0) return 'Cannot reach the STIGWatch API. Check your connection and try again.'

@@ -343,8 +343,14 @@ test('mapLimit keeps order and honours the concurrency limit', async () => {
 test('write errors are explained for the cases an admin can hit', () => {
   const e = (status, message = 'm') => new ApiError(message, status)
   assert.match(writeErrorMessage(e(403)), /read-only/)
-  assert.match(writeErrorMessage(e(413, 'File too large (max 4 MB)')), /File too large/)
   assert.match(writeErrorMessage(e(503)), /not ready/)
+  // A platform 413 (plain text, not the API's JSON) must not leak its raw "413 ..." text.
+  const platform = new ApiError('413 Request Entity Too Large', 413)
+  assert.doesNotMatch(writeErrorMessage(platform), /^413|Request Entity/)
+  assert.match(writeErrorMessage(platform), /larger than the server accepts/)
+  assert.match(writeErrorMessage(new ApiError('File too large (max 4 MB)', 413, null, true)), /^File too large \(max 4 MB\)/)
+  assert.match(writeErrorMessage(e(502)), /did not answer/)
+  assert.match(writeErrorMessage(e(504)), /did not answer/)
   assert.match(writeErrorMessage(e(400, 'File is not valid JSON')), /not valid JSON/)
   assert.match(writeErrorMessage(e(0)), /Cannot reach/)
   assert.equal(formatBytes(2048), '2.0 KB')

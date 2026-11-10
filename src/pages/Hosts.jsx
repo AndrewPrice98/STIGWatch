@@ -12,14 +12,15 @@ export default function Hosts() {
   usePageTitle('Hosts')
   const { data, error, loading, reload } = useAsync(() => api.hosts(), [])
   const envs = useMemo(() => environments(data || []), [data])
-  // The environment list comes from the data, so the allow-list is built from it.
+  // The environment list comes from the data, so the allow-list is built from it. Until the data
+  // is here any value is kept, so a shared ?env= link is not dropped from the URL while loading.
   const spec = useMemo(() => ({
     os: { param: 'os', default: '', allow: Object.keys(OS_LABEL) },
-    environment: { param: 'env', default: '', allow: envs },
+    environment: data ? { param: 'env', default: '', allow: envs } : { param: 'env', default: '', max: 100 },
     cat1: { param: 'cat1', default: false, flag: true },
     q: { param: 'q', default: '', max: 100, search: true },
     sort: { param: 'sort', default: 'risk', allow: SORT_KEYS, view: true },
-  }), [envs])
+  }), [envs, data])
   const { filters, update, clear, search, setSearch, submitSearch, any: anyFilter } = useUrlFilters(spec)
 
   const shown = useMemo(() => (data ? sortHosts(filterHosts(data, filters), filters.sort) : []),

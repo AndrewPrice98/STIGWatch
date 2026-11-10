@@ -29,11 +29,9 @@ from typing import Any, Callable
 
 from . import benchmarks, db, remediation
 from .benchmarks import Benchmark
+from .constants import CATS, DISCLAIMER, STATUSES, compliance_percent
 
-DISCLAIMER = ("STIGWatch is an independent tool. It is not a DISA product and does not "
-              "replace the SCAP Compliance Checker, Evaluate-STIG or an assessor's review.")
-
-CKL_STATUSES = ("Open", "NotAFinding", "Not_Applicable", "Not_Reviewed")
+CKL_STATUSES = STATUSES
 CKLB_STATUS = {"Open": "open", "NotAFinding": "not_a_finding",
                "Not_Applicable": "not_applicable", "Not_Reviewed": "not_reviewed"}
 SEVERITY_WEIGHT = "10.0"
@@ -47,7 +45,6 @@ MAX_VALUE = 400
 _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 _XML_BAD = re.compile("[^\u0009\u000a\u000d -퟿-�\U00010000-\U0010ffff]")
 _FORMULA = ("=", "+", "-", "@", "\t", "\r")
-CATS = ("CAT I", "CAT II", "CAT III")
 
 
 # --------------------------------------------------------------------------- text helpers
@@ -403,9 +400,7 @@ def fleet_rows(conn: sqlite3.Connection,
                 row["status"][r["status"]] += r["n"]
                 if r["status"] == "Open":
                     row["open"][r["cat"]] += r["n"]
-            decided = row["status"]["Open"] + row["status"]["NotAFinding"]
-            if decided:
-                row["compliance"] = round(100.0 * row["status"]["NotAFinding"] / decided, 1)
+            row["compliance"] = compliance_percent(row["status"])
             row["series"] = [sum(p["open"].values()) for p in db.host_trend(conn, host["id"])]
             drift = db.drift_for_scan(conn, last["id"])
             if drift:

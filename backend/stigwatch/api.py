@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from . import __version__, auth, benchmarks, config, db, demo, exports, remediation, uploads
 from .benchmarks import Benchmark, BenchmarkError
 from .checks import engine
+from .constants import CATS, STATUSES, compliance_percent
 
 log = logging.getLogger("stigwatch.api")
 
@@ -50,8 +51,6 @@ app = FastAPI(
                 "An independent tool; not a DISA product.",
 )
 
-STATUSES = ("Open", "NotAFinding", "Not_Applicable", "Not_Reviewed")
-CATS = ("CAT I", "CAT II", "CAT III")
 SEVERITY_CAT = {"high": "CAT I", "medium": "CAT II", "low": "CAT III",
                 "CAT I": "CAT I", "CAT II": "CAT II", "CAT III": "CAT III"}
 
@@ -325,9 +324,7 @@ def _counts(conn: sqlite3.Connection, scan_id: int) -> dict:
         status[r["status"]] += r["n"]
         if r["status"] == "Open":
             open_by_cat[r["cat"]] += r["n"]
-    decided = status["Open"] + status["NotAFinding"]
-    compliance = round(100.0 * status["NotAFinding"] / decided, 1) if decided else None
-    return {"status": status, "open": open_by_cat, "compliance": compliance}
+    return {"status": status, "open": open_by_cat, "compliance": compliance_percent(status)}
 
 
 def _scan_out(conn: sqlite3.Connection, scan: dict) -> dict:
@@ -369,7 +366,6 @@ def fleet(conn: Conn):
     rows = data["hosts"]
     open_total = {c: sum(r["open"][c] for r in rows) for c in CATS}
     status = {s: sum(r["status"][s] for r in rows) for s in STATUSES}
-    decided = status["Open"] + status["NotAFinding"]
     newly_visible: list[dict] = []
     for host in db.list_hosts(conn):
         latest = _latest_scan(conn, host["id"])
@@ -382,7 +378,7 @@ def fleet(conn: Conn):
         "scans": sum(r["scans"] for r in rows),
         "open": open_total,
         "status": status,
-        "compliance": round(100.0 * status["NotAFinding"] / decided, 1) if decided else None,
+        "compliance": compliance_percent(status),
         "trend": data["trend"],
         "regressions": data["regressions"],
         "newly_visible_cat1": newly_visible,

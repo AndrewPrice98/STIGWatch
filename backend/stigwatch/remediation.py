@@ -35,13 +35,12 @@ from typing import Any
 import yaml
 
 from .benchmarks import Benchmark, Rule
+from .constants import CATS, DISCLAIMER
 from .checks import engine
 from .facts import windows as windows_facts
 
 REVIEW_HEADER = "Review before applying; test on a non-production host."
-DISCLAIMER = ("STIGWatch is an independent tool. It is not a DISA product and does not "
-              "replace the SCAP Compliance Checker, Evaluate-STIG or an assessor's review.")
-_CATS = ("CAT I", "CAT II", "CAT III")
+_CATS = CATS
 _TAG_CAT = {"CAT I": "cat1", "CAT II": "cat2", "CAT III": "cat3"}
 _ID_RE = re.compile(r"^[A-Z0-9][A-Z0-9-]{2,40}$")
 

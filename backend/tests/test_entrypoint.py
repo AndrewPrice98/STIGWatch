@@ -56,8 +56,8 @@ def test_upload_paths_get_the_upload_cap_through_the_entrypoint(entry, path):
     assert small.status_code in (401, 403), small.text
     # Over the upload cap plus the multipart allowance: the app's own 413 JSON.
     big = client.post(path, content=b"x" * (5 * 1024 * 1024))
-    assert big.status_code == 413 and "too large" in big.json()["detail"]
-    assert "4 MB" in big.json()["detail"] or "MB" in big.json()["detail"]
+    assert big.status_code == 413
+    assert big.json()["detail"] == "Request too large (max 4 MB)"
 
 
 def test_other_routes_keep_the_small_cap(entry):

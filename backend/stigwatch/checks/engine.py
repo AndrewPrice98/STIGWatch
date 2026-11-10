@@ -39,17 +39,13 @@ from typing import Any
 import yaml
 
 from ..benchmarks import Benchmark, load_benchmark
+from ..constants import NOT_A_FINDING, NOT_APPLICABLE, NOT_REVIEWED, OPEN, STATUSES
 from ..facts import Operator
 from ..facts import linux as linux_facts
 from ..facts import windows as windows_facts
 
 log = logging.getLogger(__name__)
 
-OPEN = "Open"
-NOT_A_FINDING = "NotAFinding"
-NOT_APPLICABLE = "Not_Applicable"
-NOT_REVIEWED = "Not_Reviewed"
-STATUSES = (OPEN, NOT_A_FINDING, NOT_APPLICABLE, NOT_REVIEWED)
 
 CHECKS_DIR = Path(__file__).resolve().parent
 # Benchmark id -> checks file. The file names its collector.

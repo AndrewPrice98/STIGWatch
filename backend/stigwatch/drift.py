@@ -25,12 +25,7 @@ from __future__ import annotations
 
 from typing import Any
 
-OPEN = "Open"
-NOT_A_FINDING = "NotAFinding"
-NOT_APPLICABLE = "Not_Applicable"
-NOT_REVIEWED = "Not_Reviewed"
-STATUSES = (OPEN, NOT_A_FINDING, NOT_APPLICABLE, NOT_REVIEWED)
-CATS = ("CAT I", "CAT II", "CAT III")
+from .constants import CATS, NOT_A_FINDING, NOT_APPLICABLE, NOT_REVIEWED, OPEN, STATUSES  # noqa: F401
 _CLOSED = {NOT_A_FINDING, NOT_APPLICABLE}
 
 

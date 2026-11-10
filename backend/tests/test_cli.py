@@ -77,6 +77,13 @@ def test_coverage_numbers_come_from_the_generators():
     assert f"{win} of 277" in readme
     from stigwatch.checks import engine
     assert f"{len(engine.coverage('ubuntu-22.04').automated)} of 191" in readme
+    ubuntu_fixes = len(remediation.automated_ids(benchmarks.load_benchmark("ubuntu-22.04")))
+    win_checks = len(engine.coverage("windows-server-2022").automated)
+    # every figure in the "Coverage is not full benchmark coverage" paragraph
+    assert f"Ubuntu: {len(engine.coverage('ubuntu-22.04').automated)} of 191 rules have an automated check" in readme
+    assert f"Windows: {win_checks} of 277 have one" in readme
+    assert f"remediation is generated for {win} of 277" in readme
+    assert f"Ubuntu remediation is generated for {ubuntu_fixes} of 191" in readme
     assert re.search(r"coverage:start", readme)
 
 

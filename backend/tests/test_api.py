@@ -93,7 +93,9 @@ def test_unhandled_error_is_json_500_with_headers(client, monkeypatch):
 
 # ---------------------------------------------------------------- guest is read-only
 
-def test_guest_403_on_every_write_before_body_is_read(guest, db_file):
+def test_guest_403_on_every_write_and_nothing_is_stored(guest, db_file):
+    """Guests are refused on every write route and nothing is stored. (JSON routes read their small,
+    64 KiB-capped body before FastAPI resolves dependencies; uploads are refused before any read.)"""
     big = b"x" * 200_000
     cases = [("post", "/api/hosts", {"json": {"name": "a", "os": "linux"}}),
              ("post", "/api/scans", {"content": big}),

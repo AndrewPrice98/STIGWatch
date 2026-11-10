@@ -244,8 +244,8 @@ jobs:
           ansible-lint lint-copy/*.yml
 
   frontend:
-    # Skipped step by step until the dashboard adds package.json (Task 9). hashFiles() is
-    # not available in a job-level `if`, so the condition sits on each step.
+    # The React dashboard: unit tests (node --test), a production build and npm audit.
+    # Each step is gated on package.json (hashFiles() is not available in a job-level `if`).
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

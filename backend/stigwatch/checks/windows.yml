@@ -1,0 +1,1797 @@
+# Automated checks for the Microsoft Windows Server 2022 STIG (benchmark windows-server-2022).
+#
+# Each check implements the rule's DISA check text over facts gathered by
+# collectors/collect-windows.ps1 and normalised by stigwatch/facts/windows.py.
+# Keys, leaf operators and result semantics are those of linux.yml (see stigwatch/checks/engine.py);
+# Windows adds three operators: has_sid (a user right lists a SID or a SID pattern such as
+# S-1-5-21-*-512), acl (file permissions no wider than the given principals) and dod_banner.
+#
+# Registry paths are lists: [registry, <key>, <value name>, value|set|number]. "value" is the data
+# (REG_DWORD as an unsigned number, REG_SZ as text); "set" is false when the value does not exist;
+# "number" is the data as a number for REG_SZ values that hold one.
+#
+# House rules (see DECISIONS.md, "Windows checks"):
+# - NotAFinding only when the facts satisfy every clause of the check text.
+# - "If an application requires this user right" and other documented ISSO exceptions are not
+#   visible on the host: the result is Open and the rationale says so; the assessor records them.
+# - Domain-controller rules are Not_Applicable on member and standalone servers and member-server
+#   rules on domain controllers, proved by Win32_ComputerSystem.DomainRole (domain_role).
+# - Domain-controller rules whose facts live in Active Directory rather than on the host are
+#   evidence-only: Not_Applicable off domain controllers, Not_Reviewed on them.
+#
+# Generated once from a table and then maintained by hand.
+
+collector: windows
+benchmark: windows-server-2022
+checks:
+- stig_id: WN22-00-000020
+  facts: [domain_role, local_accounts, registry]
+  na_if:
+    all:
+    - {path: domain_role.role, ne: dc}
+    - {path: local_accounts.builtin_administrator.enabled, eq: false}
+  logic:
+    all:
+    - {path: domain_role.role, eq: standalone}
+    - {path: local_accounts.builtin_administrator.password_age_days, le: 180}
+  unmet_if:
+    all:
+    - {path: domain_role.role, ne: dc}
+    - {path: local_accounts.builtin_administrator.password_age_days, gt: 180}
+  observe:
+  - [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\LAPS, BackupDirectory, value]
+  - [registry, HKLM\SOFTWARE\Microsoft\Policies\LAPS, BackupDirectory, value]
+  - [registry, HKLM\SOFTWARE\Policies\Microsoft Services\AdmPwd, AdmPwdEnabled, value]
+  rationale: The enabled built-in Administrator password must be 180 days old or less. On domain members LAPS must also be configured and operational, which needs review (the LAPS policy values are shown);
+    not applicable when the built-in Administrator is disabled.
+- stig_id: WN22-00-000090
+  facts: [tpm]
+  logic:
+    all:
+    - {path: tpm.present, eq: true}
+    - {path: tpm.ready, eq: true}
+    - {path: tpm.spec_major, eq: '2.0'}
+  unmet_if:
+    any:
+    - {path: tpm.present, eq: false}
+    - {path: tpm.ready, eq: false}
+    - {path: tpm.spec_major, ne: '2.0'}
+  rationale: A TPM 2.0 must be present and ready for use.
+- stig_id: WN22-00-000100
+  facts: [os_support]
+  logic: {path: os_support.within_support, eq: true}
+  observe: [os_support.build]
+  rationale: 'The OS must be within Microsoft support: the check text gives 10/15/2031 as the end of Extended Support for Windows Server 2022 (build 20348). Applying the latest security update is recommended
+    but is not part of the finding.'
+- stig_id: WN22-00-000110
+  facts: [defender, services]
+  logic: {path: defender.antivirus_enabled, eq: true}
+  result_if_false: Not_Reviewed
+  observe:
+  - [services, WinDefend, status]
+  rationale: An antivirus program must be in use. Microsoft Defender Antivirus enabled is not a finding; otherwise a third-party product may be in use, which needs review.
+- stig_id: WN22-00-000130
+  facts: [volumes]
+  logic:
+    all:
+    - {path: volumes.checked, ge: 1}
+    - {path: volumes.non_ntfs_count, eq: 0}
+    - {path: volumes.unverified_count, eq: 0}
+  unmet_if: {path: volumes.non_ntfs_count, ge: 1}
+  observe: [volumes.volumes, volumes.non_ntfs, volumes.unverified, volumes.excluded]
+  rationale: Every local volume must use NTFS, ReFS or CSVFS; system partitions (EFI system, Recovery, MSR) are excluded as the check text allows.
+- stig_id: WN22-00-000190
+  facts: [domain_role, local_accounts]
+  logic:
+    all:
+    - {path: domain_role.role, ne: dc}
+    - {path: local_accounts.enabled_inactive_35_days, empty: true}
+  result_if_false: Not_Reviewed
+  rationale: No enabled local account (other than the built-in Administrator and Guest) may be unused for 35 days. Application accounts and documented exceptions are excluded by the check text and cannot
+    be told apart on the host, so listed accounts need review; domain controllers need an AD query.
+- stig_id: WN22-00-000200
+  facts: [domain_role, local_accounts]
+  logic:
+    all:
+    - {path: domain_role.role, ne: dc}
+    - {path: local_accounts.enabled_password_not_required, empty: true}
+  unmet_if:
+    all:
+    - {path: domain_role.role, ne: dc}
+    - {path: local_accounts.enabled_password_not_required, empty: false}
+  rationale: No enabled local account may have PasswordRequired False (Win32_UserAccount). Domain controllers need an AD query and are not decided here.
+- stig_id: WN22-00-000210
+  facts: [domain_role, local_accounts]
+  logic:
+    all:
+    - {path: domain_role.role, ne: dc}
+    - {path: local_accounts.enabled_password_never_expires, empty: true}
+  result_if_false: Not_Reviewed
+  rationale: Enabled local accounts must have expiring passwords (PasswordExpires True). Application accounts are excluded by the check text and cannot be told apart on the host, so listed accounts need
+    review; domain controllers need an AD query.
+- stig_id: WN22-00-000250
+  facts: [bitlocker]
+  logic:
+    all:
+    - {path: bitlocker.fixed_count, ge: 1}
+    - {path: bitlocker.unprotected_count, eq: 0}
+    - {path: bitlocker.unknown_count, eq: 0}
+  unmet_if: {path: bitlocker.unprotected_count, ge: 1}
+  observe: [bitlocker.volumes]
+  rationale: 'Data at rest must be encrypted: every fixed volume must have BitLocker protection on. A documented and approved reason to omit OS-level encryption (for example hypervisor or storage-array
+    encryption) makes the rule not applicable, which the assessor records.'
+- stig_id: WN22-00-000280
+  facts: [firewall, services]
+  logic:
+    all:
+    - {path: firewall.all_enabled, eq: true}
+    - path: [services, MpsSvc, status]
+      eq: Running
+  result_if_false: Not_Reviewed
+  observe: [firewall.disabled]
+  rationale: 'A host-based firewall must be installed and enabled: Windows Defender Firewall running with every profile enabled is not a finding; otherwise a third-party firewall may be in use, which needs
+    review.'
+- stig_id: WN22-00-000320
+  facts: [features]
+  logic:
+    path: &id001 [features, Fax]
+    in: [Available, Removed]
+  unmet_if:
+    path: *id001
+    eq: Installed
+  rationale: The Fax Server role (Fax) must not be installed.
+- stig_id: WN22-00-000330
+  facts: [features]
+  logic:
+    path: &id002 [features, Web-Ftp-Service]
+    in: [Available, Removed]
+  unmet_if:
+    path: *id002
+    eq: Installed
+  rationale: The Microsoft FTP service (Web-Ftp-Service) must not be installed. A documented FTP server role makes the rule not applicable; the assessor records it.
+- stig_id: WN22-00-000340
+  facts: [features]
+  logic:
+    path: &id003 [features, PNRP]
+    in: [Available, Removed]
+  unmet_if:
+    path: *id003
+    eq: Installed
+  rationale: The Peer Name Resolution Protocol (PNRP) must not be installed.
+- stig_id: WN22-00-000350
+  facts: [features]
+  logic:
+    path: &id004 [features, Simple-TCPIP]
+    in: [Available, Removed]
+  unmet_if:
+    path: *id004
+    eq: Installed
+  rationale: Simple TCP/IP Services (Simple-TCPIP) must not be installed.
+- stig_id: WN22-00-000360
+  facts: [features]
+  logic:
+    path: &id005 [features, Telnet-Client]
+    in: [Available, Removed]
+  unmet_if:
+    path: *id005
+    eq: Installed
+  rationale: The Telnet Client (Telnet-Client) must not be installed.
+- stig_id: WN22-00-000370
+  facts: [features]
+  logic:
+    path: &id006 [features, TFTP-Client]
+    in: [Available, Removed]
+  unmet_if:
+    path: *id006
+    eq: Installed
+  rationale: The TFTP Client (TFTP-Client) must not be installed.
+- stig_id: WN22-00-000380
+  facts: [features, registry]
+  na_if:
+    all:
+    - path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\LanManServer\Parameters, SMB1, value]
+      eq: 0
+    - path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\mrxsmb10, Start, value]
+      eq: 4
+  logic:
+    path: &id007 [features, FS-SMB1]
+    in: [Available, Removed]
+  unmet_if:
+    path: *id007
+    eq: Installed
+  rationale: The SMBv1 protocol feature (FS-SMB1) must not be installed. Not applicable when SMBv1 is disabled on both the server (SMB1 = 0) and the client (mrxsmb10 Start = 4).
+- stig_id: WN22-00-000390
+  facts: [features, registry]
+  na_if:
+    path: [features, FS-SMB1]
+    in: [Available, Removed]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\LanManServer\Parameters, SMB1, value]
+    eq: 0
+  rationale: Must have the Server Message Block (SMB) v1 protocol disabled on the SMB server. HKLM\SYSTEM\CurrentControlSet\Services\LanManServer\Parameters\SMB1 must be 0. Not applicable when the SMBv1
+    feature (FS-SMB1) is not installed (WN22-00-000380).
+- stig_id: WN22-00-000400
+  facts: [features, registry]
+  na_if:
+    path: [features, FS-SMB1]
+    in: [Available, Removed]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\mrxsmb10, Start, value]
+    eq: 4
+  rationale: Must have the Server Message Block (SMB) v1 protocol disabled on the SMB client. HKLM\SYSTEM\CurrentControlSet\Services\mrxsmb10\Start must be 4. Not applicable when the SMBv1 feature (FS-SMB1)
+    is not installed (WN22-00-000380).
+- stig_id: WN22-00-000410
+  facts: [features]
+  logic:
+    path: &id008 [features, PowerShell-v2]
+    in: [Available, Removed]
+  unmet_if:
+    path: *id008
+    eq: Installed
+  rationale: Windows PowerShell 2.0 (PowerShell-v2) must not be installed.
+- stig_id: WN22-00-000420
+  facts: [features]
+  na_if:
+    path: [features, Web-Ftp-Service]
+    in: [Available, Removed]
+  logic:
+    path: [features, Web-Ftp-Service]
+    eq: Installed
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: FTP servers must prevent anonymous logons. Not applicable when the FTP service is not installed; on an FTP server the IIS FTP configuration is not collected and needs review.
+- stig_id: WN22-00-000430
+  facts: [features]
+  na_if:
+    path: [features, Web-Ftp-Service]
+    in: [Available, Removed]
+  logic:
+    path: [features, Web-Ftp-Service]
+    eq: Installed
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: FTP servers must prevent access to the system drive. Not applicable when the FTP service is not installed; on an FTP server the IIS FTP configuration is not collected and needs review.
+- stig_id: WN22-00-000440
+  facts: [domain_role, registry]
+  logic:
+    all:
+    - {path: domain_role.role, eq: member}
+    - any:
+      - path: &id010 [registry, HKLM\SOFTWARE\Policies\Microsoft\W32time\Parameters, Type, value]
+        eq: NT5DS
+      - all:
+        - path: &id009 [registry, HKLM\SOFTWARE\Policies\Microsoft\W32time\Parameters, Type, set]
+          eq: false
+        - path: &id011 [registry, HKLM\SYSTEM\CurrentControlSet\Services\W32Time\Parameters, Type, value]
+          eq: NT5DS
+  unmet_if:
+    all:
+    - {path: domain_role.role, eq: member}
+    - any:
+      - all:
+        - path: *id009
+          eq: true
+        - path: *id010
+          ne: NT5DS
+      - all:
+        - path: *id009
+          eq: false
+        - path: *id011
+          ne: NT5DS
+  observe:
+  - [registry, HKLM\SOFTWARE\Policies\Microsoft\W32time\Parameters, NtpServer, value]
+  - [registry, HKLM\SYSTEM\CurrentControlSet\Services\W32Time\Parameters, NtpServer, value]
+  rationale: Domain-joined member servers must take time from the domain hierarchy (W32Time Type NT5DS; the policy value wins over the service value). Standalone systems and domain controllers need a DoD
+    time source, which needs review.
+- stig_id: WN22-00-000460
+  facts: [os]
+  logic: {path: os.firmware_type, eq: UEFI}
+  unmet_if: {path: os.firmware_type, eq: Legacy}
+  rationale: The system must run in UEFI mode, not Legacy BIOS ($env:firmware_type, the value System Information shows as BIOS Mode).
+- stig_id: WN22-00-000470
+  facts: [secure_boot]
+  logic: {path: secure_boot.enabled, eq: true}
+  rationale: Secure Boot must be enabled (Confirm-SecureBootUEFI returns True).
+- stig_id: WN22-AC-000010
+  facts: [security_policy]
+  logic:
+    any:
+    - {path: security_policy.system_access.LockoutDuration, ge: 15}
+    - path: security_policy.system_access.LockoutDuration
+      in: [0, -1]
+  unmet_if: {path: security_policy.system_access.LockoutDuration, gt: 0, lt: 15}
+  rationale: The account lockout duration (LockoutDuration) must be 15 minutes or more, or 0 / -1 (until an administrator unlocks it). Not set (no lockout threshold) is covered by WN22-AC-000020.
+- stig_id: WN22-AC-000020
+  facts: [security_policy]
+  logic: {path: security_policy.system_access.LockoutBadCount, ge: 1, le: 3}
+  rationale: The account lockout threshold (LockoutBadCount) must be 1 to 3 attempts; 0 is a finding.
+- stig_id: WN22-AC-000030
+  facts: [security_policy]
+  logic: {path: security_policy.system_access.ResetLockoutCount, ge: 15}
+  unmet_if: {path: security_policy.system_access.ResetLockoutCount, lt: 15}
+  rationale: The reset account lockout counter (ResetLockoutCount) must be 15 minutes or more.
+- stig_id: WN22-AC-000040
+  facts: [security_policy]
+  logic: {path: security_policy.system_access.PasswordHistorySize, ge: 24}
+  rationale: Password history (PasswordHistorySize) must remember 24 passwords.
+- stig_id: WN22-AC-000050
+  facts: [security_policy]
+  logic: {path: security_policy.system_access.MaximumPasswordAge, ge: 1, le: 180}
+  rationale: The maximum password age (MaximumPasswordAge) must be 1 to 180 days; 0 or -1 (never) is a finding.
+- stig_id: WN22-AC-000060
+  facts: [security_policy]
+  logic: {path: security_policy.system_access.MinimumPasswordAge, ge: 1}
+  rationale: The minimum password age (MinimumPasswordAge) must be at least 1 day.
+- stig_id: WN22-AC-000070
+  facts: [security_policy]
+  logic: {path: security_policy.system_access.MinimumPasswordLength, ge: 14}
+  rationale: The minimum password length (MinimumPasswordLength) must be 14 characters or more.
+- stig_id: WN22-AC-000080
+  facts: [security_policy]
+  logic: {path: security_policy.system_access.PasswordComplexity, eq: 1}
+  rationale: Password complexity (PasswordComplexity) must be enabled. An external password filter that requires it disabled is not visible on the host; the assessor records it.
+- stig_id: WN22-AC-000090
+  facts: [security_policy]
+  logic: {path: security_policy.system_access.ClearTextPassword, eq: 0}
+  rationale: Reversible password encryption (ClearTextPassword) must be disabled.
+- stig_id: WN22-AU-000030
+  facts: [acls]
+  logic:
+    path: acls.log_application
+    acl:
+      full: [S-1-5-18, S-1-5-32-544, S-1-5-80-880578595-1860270145-482643319-2788375705-1540778122]
+  rationale: The Application event log file may only grant access to Eventlog, SYSTEM and Administrators.
+- stig_id: WN22-AU-000040
+  facts: [acls]
+  logic:
+    path: acls.log_security
+    acl:
+      full: [S-1-5-18, S-1-5-32-544, S-1-5-80-880578595-1860270145-482643319-2788375705-1540778122]
+  rationale: The Security event log file may only grant access to Eventlog, SYSTEM and Administrators.
+- stig_id: WN22-AU-000050
+  facts: [acls]
+  logic:
+    path: acls.log_system
+    acl:
+      full: [S-1-5-18, S-1-5-32-544, S-1-5-80-880578595-1860270145-482643319-2788375705-1540778122]
+  rationale: The System event log file may only grant access to Eventlog, SYSTEM and Administrators.
+- stig_id: WN22-AU-000060
+  facts: [os, acls]
+  na_if: &id022 {path: os.installation_type, eq: Server Core}
+  logic:
+    path: acls.eventvwr
+    acl:
+      full: [S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464]
+      read: any
+  rationale: Only TrustedInstaller may have Full control or Modify on Eventvwr.exe; others at most read & execute. Not applicable to Server Core.
+- stig_id: WN22-AU-000070
+  facts: [audit_policy]
+  logic: {path: audit_policy.credential_validation.success, eq: true}
+  rationale: The audit policy must audit credential validation successes (auditpol).
+- stig_id: WN22-AU-000080
+  facts: [audit_policy]
+  logic: {path: audit_policy.credential_validation.failure, eq: true}
+  rationale: The audit policy must audit credential validation failures (auditpol).
+- stig_id: WN22-AU-000090
+  facts: [audit_policy]
+  logic: {path: audit_policy.other_account_management_events.success, eq: true}
+  rationale: The audit policy must audit other account management events successes (auditpol).
+- stig_id: WN22-AU-000100
+  facts: [audit_policy]
+  logic: {path: audit_policy.security_group_management.success, eq: true}
+  rationale: The audit policy must audit security group management successes (auditpol).
+- stig_id: WN22-AU-000110
+  facts: [audit_policy]
+  logic: {path: audit_policy.user_account_management.success, eq: true}
+  rationale: The audit policy must audit user account management successes (auditpol).
+- stig_id: WN22-AU-000120
+  facts: [audit_policy]
+  logic: {path: audit_policy.user_account_management.failure, eq: true}
+  rationale: The audit policy must audit user account management failures (auditpol).
+- stig_id: WN22-AU-000130
+  facts: [audit_policy]
+  logic: {path: audit_policy.plug_and_play_events.success, eq: true}
+  rationale: The audit policy must audit plug and play events successes (auditpol).
+- stig_id: WN22-AU-000140
+  facts: [audit_policy]
+  logic: {path: audit_policy.process_creation.success, eq: true}
+  rationale: The audit policy must audit process creation successes (auditpol).
+- stig_id: WN22-AU-000160
+  facts: [audit_policy]
+  logic: {path: audit_policy.account_lockout.failure, eq: true}
+  rationale: The audit policy must audit account lockout failures (auditpol).
+- stig_id: WN22-AU-000170
+  facts: [audit_policy]
+  logic: {path: audit_policy.group_membership.success, eq: true}
+  rationale: The audit policy must audit group membership successes (auditpol).
+- stig_id: WN22-AU-000180
+  facts: [audit_policy]
+  logic: {path: audit_policy.logoff.success, eq: true}
+  rationale: The audit policy must audit logoff successes (auditpol).
+- stig_id: WN22-AU-000190
+  facts: [audit_policy]
+  logic: {path: audit_policy.logon.success, eq: true}
+  rationale: The audit policy must audit logon successes (auditpol).
+- stig_id: WN22-AU-000200
+  facts: [audit_policy]
+  logic: {path: audit_policy.logon.failure, eq: true}
+  rationale: The audit policy must audit logon failures (auditpol).
+- stig_id: WN22-AU-000210
+  facts: [audit_policy]
+  logic: {path: audit_policy.special_logon.success, eq: true}
+  rationale: The audit policy must audit special logon successes (auditpol).
+- stig_id: WN22-AU-000220
+  facts: [audit_policy]
+  logic: {path: audit_policy.other_object_access_events.success, eq: true}
+  rationale: The audit policy must audit other object access events successes (auditpol).
+- stig_id: WN22-AU-000230
+  facts: [audit_policy]
+  logic: {path: audit_policy.other_object_access_events.failure, eq: true}
+  rationale: The audit policy must audit other object access events failures (auditpol).
+- stig_id: WN22-AU-000240
+  facts: [audit_policy]
+  logic: {path: audit_policy.removable_storage.success, eq: true}
+  result_if_false: Not_Reviewed
+  rationale: The audit policy must audit removable storage successes (auditpol). Virtual machines and systems using network attached storage may leave it not configured, which the host cannot show, so a
+    missing setting needs review.
+- stig_id: WN22-AU-000250
+  facts: [audit_policy]
+  logic: {path: audit_policy.removable_storage.failure, eq: true}
+  result_if_false: Not_Reviewed
+  rationale: The audit policy must audit removable storage failures (auditpol). Virtual machines and systems using network attached storage may leave it not configured, which the host cannot show, so a
+    missing setting needs review.
+- stig_id: WN22-AU-000260
+  facts: [audit_policy]
+  logic: {path: audit_policy.audit_policy_change.success, eq: true}
+  rationale: The audit policy must audit audit policy change successes (auditpol).
+- stig_id: WN22-AU-000270
+  facts: [audit_policy]
+  logic: {path: audit_policy.audit_policy_change.failure, eq: true}
+  rationale: The audit policy must audit audit policy change failures (auditpol).
+- stig_id: WN22-AU-000280
+  facts: [audit_policy]
+  logic: {path: audit_policy.authentication_policy_change.success, eq: true}
+  rationale: The audit policy must audit authentication policy change successes (auditpol).
+- stig_id: WN22-AU-000290
+  facts: [audit_policy]
+  logic: {path: audit_policy.authorization_policy_change.success, eq: true}
+  rationale: The audit policy must audit authorization policy change successes (auditpol).
+- stig_id: WN22-AU-000300
+  facts: [audit_policy]
+  logic: {path: audit_policy.sensitive_privilege_use.success, eq: true}
+  rationale: The audit policy must audit sensitive privilege use successes (auditpol).
+- stig_id: WN22-AU-000310
+  facts: [audit_policy]
+  logic: {path: audit_policy.sensitive_privilege_use.failure, eq: true}
+  rationale: The audit policy must audit sensitive privilege use failures (auditpol).
+- stig_id: WN22-AU-000320
+  facts: [audit_policy]
+  logic: {path: audit_policy.ipsec_driver.success, eq: true}
+  rationale: The audit policy must audit ipsec driver successes (auditpol).
+- stig_id: WN22-AU-000330
+  facts: [audit_policy]
+  logic: {path: audit_policy.ipsec_driver.failure, eq: true}
+  rationale: The audit policy must audit ipsec driver failures (auditpol).
+- stig_id: WN22-AU-000340
+  facts: [audit_policy]
+  logic: {path: audit_policy.other_system_events.success, eq: true}
+  rationale: The audit policy must audit other system events successes (auditpol).
+- stig_id: WN22-AU-000350
+  facts: [audit_policy]
+  logic: {path: audit_policy.other_system_events.failure, eq: true}
+  rationale: The audit policy must audit other system events failures (auditpol).
+- stig_id: WN22-AU-000360
+  facts: [audit_policy]
+  logic: {path: audit_policy.security_state_change.success, eq: true}
+  rationale: The audit policy must audit security state change successes (auditpol).
+- stig_id: WN22-AU-000370
+  facts: [audit_policy]
+  logic: {path: audit_policy.security_system_extension.success, eq: true}
+  rationale: The audit policy must audit security system extension successes (auditpol).
+- stig_id: WN22-AU-000380
+  facts: [audit_policy]
+  logic: {path: audit_policy.system_integrity.success, eq: true}
+  rationale: The audit policy must audit system integrity successes (auditpol).
+- stig_id: WN22-AU-000390
+  facts: [audit_policy]
+  logic: {path: audit_policy.system_integrity.failure, eq: true}
+  rationale: The audit policy must audit system integrity failures (auditpol).
+- stig_id: WN22-CC-000010
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\Personalization, NoLockScreenSlideshow, value]
+    eq: 1
+  rationale: Must prevent the display of slide shows on the lock screen. HKLM\SOFTWARE\Policies\Microsoft\Windows\Personalization\NoLockScreenSlideshow must be 1.
+- stig_id: WN22-CC-000020
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\Wdigest, UseLogonCredential, value]
+    eq: 0
+  rationale: Must have WDigest Authentication disabled. HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\Wdigest\UseLogonCredential must be 0.
+- stig_id: WN22-CC-000030
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters, DisableIPSourceRouting, value]
+    eq: 2
+  rationale: Internet Protocol version 6 (IPv6) source routing must be configured to the highest protection level to prevent IP source routing. HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\DisableIPSourceRouting
+    must be 2.
+- stig_id: WN22-CC-000040
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters, DisableIPSourceRouting, value]
+    eq: 2
+  rationale: Source routing must be configured to the highest protection level to prevent Internet Protocol (IP) source routing. HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\DisableIPSourceRouting
+    must be 2.
+- stig_id: WN22-CC-000050
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters, EnableICMPRedirect, value]
+    eq: 0
+  rationale: Must be configured to prevent Internet Control Message Protocol (ICMP) redirects from overriding Open Shortest Path First (OSPF)-generated routes. HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\EnableICMPRedirect
+    must be 0.
+- stig_id: WN22-CC-000060
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\Netbt\Parameters, NoNameReleaseOnDemand, value]
+    eq: 1
+  rationale: Must be configured to ignore NetBIOS name release requests except from WINS servers. HKLM\SYSTEM\CurrentControlSet\Services\Netbt\Parameters\NoNameReleaseOnDemand must be 1.
+- stig_id: WN22-CC-000070
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\LanmanWorkstation, AllowInsecureGuestAuth, value]
+    eq: 0
+  rationale: Insecure logons to an SMB server must be disabled. HKLM\SOFTWARE\Policies\Microsoft\Windows\LanmanWorkstation\AllowInsecureGuestAuth must be 0.
+- stig_id: WN22-CC-000080
+  facts: [domain_role, registry]
+  na_if: &id012 {path: domain_role.role, eq: standalone}
+  logic:
+    all:
+    - path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\NetworkProvider\HardenedPaths, \\*\NETLOGON, value]
+      matches: (?i)RequireMutualAuthentication\s*=\s*1
+    - path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\NetworkProvider\HardenedPaths, \\*\NETLOGON, value]
+      matches: (?i)RequireIntegrity\s*=\s*1
+    - path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\NetworkProvider\HardenedPaths, \\*\SYSVOL, value]
+      matches: (?i)RequireMutualAuthentication\s*=\s*1
+    - path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\NetworkProvider\HardenedPaths, \\*\SYSVOL, value]
+      matches: (?i)RequireIntegrity\s*=\s*1
+  rationale: Hardened UNC paths \\*\NETLOGON and \\*\SYSVOL must require mutual authentication and integrity (RequireMutualAuthentication=1, RequireIntegrity=1); not applicable to standalone systems.
+- stig_id: WN22-CC-000090
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit, ProcessCreationIncludeCmdLine_Enabled, value]
+    eq: 1
+  rationale: Command line data must be included in process creation events. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit\ProcessCreationIncludeCmdLine_Enabled must be 1.
+- stig_id: WN22-CC-000100
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation, AllowProtectedCreds, value]
+    eq: 1
+  rationale: Must be configured to enable Remote host allows delegation of nonexportable credentials. HKLM\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation\AllowProtectedCreds must be 1.
+- stig_id: WN22-CC-000110
+  facts: [domain_role, device_guard, registry]
+  na_if: *id012
+  logic:
+    all:
+    - {path: device_guard.required_security_properties, contains: 2}
+    - {path: device_guard.vbs_status, eq: 2}
+  observe:
+  - [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceGuard, EnableVirtualizationBasedSecurity, value]
+  - [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceGuard, RequirePlatformSecurityFeatures, value]
+  rationale: Virtualization-based security must be running (Win32_DeviceGuard VirtualizationBasedSecurityStatus 2) with Secure Boot required (RequiredSecurityProperties includes 2); the policy registry
+    values alone do not prove it. Not applicable to standalone systems.
+- stig_id: WN22-CC-000130
+  facts: [registry]
+  logic:
+    any:
+    - path: &id013 [registry, HKLM\SYSTEM\CurrentControlSet\Policies\EarlyLaunch, DriverLoadPolicy, value]
+      unset: true
+    - path: *id013
+      in: [1, 3, 8]
+  unmet_if:
+    path: *id013
+    eq: 7
+  rationale: 'Early Launch Antimalware must not load bad boot drivers: DriverLoadPolicy not set, 1, 3 or 8 is not a finding; 7 (all drivers) is a finding; any other value needs review.'
+- stig_id: WN22-CC-000140
+  facts: [domain_role, registry]
+  na_if: &id020 {path: domain_role.role, eq: dc}
+  logic:
+    path: [registry, 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Group Policy\{35378EAC-683F-11D2-A89A-00C04FBBCFA2}', NoGPOListChanges, value]
+    eq: 0
+  rationale: Group policy objects must be reprocessed even if they have not changed. HKLM\SOFTWARE\Policies\Microsoft\Windows\Group Policy\{35378EAC-683F-11D2-A89A-00C04FBBCFA2}\NoGPOListChanges must be
+    0. Not applicable to domain controllers.
+- stig_id: WN22-CC-000150
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Printers, DisableWebPnPDownload, value]
+    eq: 1
+  rationale: Downloading print driver packages over HTTP must be turned off. HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Printers\DisableWebPnPDownload must be 1.
+- stig_id: WN22-CC-000160
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Printers, DisableHTTPPrinting, value]
+    eq: 1
+  rationale: Printing over HTTP must be turned off. HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Printers\DisableHTTPPrinting must be 1.
+- stig_id: WN22-CC-000170
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\System, DontDisplayNetworkSelectionUI, value]
+    eq: 1
+  rationale: Network selection user interface (UI) must not be displayed on the logon screen. HKLM\SOFTWARE\Policies\Microsoft\Windows\System\DontDisplayNetworkSelectionUI must be 1.
+- stig_id: WN22-CC-000180
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Power\PowerSettings\0e796bdb-100d-47d6-a2d5-f7d2daa51f51, DCSettingIndex, value]
+    eq: 1
+  rationale: Users must be prompted to authenticate when the system wakes from sleep (on battery). HKLM\SOFTWARE\Policies\Microsoft\Power\PowerSettings\0e796bdb-100d-47d6-a2d5-f7d2daa51f51\DCSettingIndex
+    must be 1.
+- stig_id: WN22-CC-000190
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Power\PowerSettings\0e796bdb-100d-47d6-a2d5-f7d2daa51f51, ACSettingIndex, value]
+    eq: 1
+  rationale: Users must be prompted to authenticate when the system wakes from sleep (plugged in). HKLM\SOFTWARE\Policies\Microsoft\Power\PowerSettings\0e796bdb-100d-47d6-a2d5-f7d2daa51f51\ACSettingIndex
+    must be 1.
+- stig_id: WN22-CC-000200
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\AppCompat, DisableInventory, value]
+    eq: 1
+  rationale: Application Compatibility Program Inventory must be prevented from collecting data and sending the information to Microsoft. HKLM\SOFTWARE\Policies\Microsoft\Windows\AppCompat\DisableInventory
+    must be 1.
+- stig_id: WN22-CC-000210
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer, NoAutoplayfornonVolume, value]
+    eq: 1
+  rationale: Autoplay must be turned off for nonvolume devices. HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer\NoAutoplayfornonVolume must be 1.
+- stig_id: WN22-CC-000220
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer, NoAutorun, value]
+    eq: 1
+  rationale: Default AutoRun behavior must be configured to prevent AutoRun commands. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoAutorun must be 1.
+- stig_id: WN22-CC-000230
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer, NoDriveTypeAutoRun, value]
+    eq: 255
+  rationale: AutoPlay must be disabled for all drives. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoDriveTypeAutoRun must be 0xff (255).
+- stig_id: WN22-CC-000240
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\CredUI, EnumerateAdministrators, value]
+    eq: 0
+  rationale: Administrator accounts must not be enumerated during elevation. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\CredUI\EnumerateAdministrators must be 0.
+- stig_id: WN22-CC-000250
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection, AllowTelemetry, value]
+    in: [1, 3]
+  rationale: Diagnostic Data must be configured to send "required diagnostic data" or "optional diagnostic data". HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection\AllowTelemetry must be 1 or 3.
+- stig_id: WN22-CC-000260
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization, DODownloadMode, value]
+    in: [0, 1, 2, 99]
+  rationale: Windows Update must not obtain updates from other PCs on the internet. HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization\DODownloadMode must be 0 or 1 or 2 or 0x63 (99). 3 (Internet
+    peering) is a finding.
+- stig_id: WN22-CC-000270
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\EventLog\Application, MaxSize, value]
+    ge: 32768
+  rationale: The Application event log maximum size (policy MaxSize) must be 32768 KB or greater. A system that writes events directly to an audit server is not applicable; the assessor records that.
+- stig_id: WN22-CC-000280
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\EventLog\Security, MaxSize, set]
+    eq: true
+  result_if_true: Not_Reviewed
+  observe:
+  - [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\EventLog\Security, MaxSize, value]
+  rationale: The Security event log maximum size must be set to hold one week of audit records; a missing value is a finding, but whether the size set holds a week depends on the environment (the check
+    text's 5120000 KB is only an example), so a set value needs review.
+- stig_id: WN22-CC-000290
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\EventLog\System, MaxSize, value]
+    ge: 32768
+  rationale: The System event log maximum size (policy MaxSize) must be 32768 KB or greater. A system that writes events directly to an audit server is not applicable; the assessor records that.
+- stig_id: WN22-CC-000300
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\System, EnableSmartScreen, value]
+    eq: 1
+  result_if_false: Not_Reviewed
+  rationale: Microsoft Defender SmartScreen must be enabled (EnableSmartScreen = 1). The rule applies only to unclassified systems, which the host cannot show, so a value other than 1 needs review.
+- stig_id: WN22-CC-000310
+  facts: [registry]
+  logic:
+    any:
+    - path: &id014 [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer, NoDataExecutionPrevention, value]
+      unset: true
+    - path: *id014
+      in: [0]
+  unmet_if:
+    path: *id014
+    eq: 1
+  rationale: Explorer Data Execution Prevention must be enabled. HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer\NoDataExecutionPrevention must be 0 or not set.
+- stig_id: WN22-CC-000320
+  facts: [registry]
+  logic:
+    any:
+    - path: &id015 [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer, NoHeapTerminationOnCorruption, value]
+      unset: true
+    - path: *id015
+      in: [0]
+  unmet_if:
+    path: *id015
+    eq: 1
+  rationale: Turning off File Explorer heap termination on corruption must be disabled. HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer\NoHeapTerminationOnCorruption must be 0 or not set.
+- stig_id: WN22-CC-000330
+  facts: [registry]
+  logic:
+    any:
+    - path: &id016 [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer, PreXPSP2ShellProtocolBehavior, value]
+      unset: true
+    - path: *id016
+      in: [0]
+  unmet_if:
+    path: *id016
+    eq: 1
+  rationale: File Explorer shell protocol must run in protected mode. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\PreXPSP2ShellProtocolBehavior must be 0 or not set.
+- stig_id: WN22-CC-000340
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services, DisablePasswordSaving, value]
+    eq: 1
+  rationale: Must not save passwords in the Remote Desktop Client. HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services\DisablePasswordSaving must be 1.
+- stig_id: WN22-CC-000350
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services, fDisableCdm, value]
+    eq: 1
+  rationale: Remote Desktop Services must prevent drive redirection. HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services\fDisableCdm must be 1.
+- stig_id: WN22-CC-000360
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services, fPromptForPassword, value]
+    eq: 1
+  rationale: Remote Desktop Services must always prompt a client for passwords upon connection. HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services\fPromptForPassword must be 1.
+- stig_id: WN22-CC-000370
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services, fEncryptRPCTraffic, value]
+    eq: 1
+  rationale: Remote Desktop Services must require secure Remote Procedure Call (RPC) communications. HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services\fEncryptRPCTraffic must be 1.
+- stig_id: WN22-CC-000380
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services, MinEncryptionLevel, value]
+    eq: 3
+  rationale: Remote Desktop Services must be configured with the client connection encryption set to High Level. HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services\MinEncryptionLevel must be
+    3.
+- stig_id: WN22-CC-000390
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Internet Explorer\Feeds, DisableEnclosureDownload, value]
+    eq: 1
+  rationale: Must prevent attachments from being downloaded from RSS feeds. HKLM\SOFTWARE\Policies\Microsoft\Internet Explorer\Feeds\DisableEnclosureDownload must be 1.
+- stig_id: WN22-CC-000400
+  facts: [registry]
+  logic:
+    any:
+    - path: &id017 [registry, HKLM\SOFTWARE\Policies\Microsoft\Internet Explorer\Feeds, AllowBasicAuthInClear, value]
+      unset: true
+    - path: *id017
+      in: [0]
+  unmet_if:
+    path: *id017
+    eq: 1
+  rationale: Must disable Basic authentication for RSS feeds over HTTP. HKLM\SOFTWARE\Policies\Microsoft\Internet Explorer\Feeds\AllowBasicAuthInClear must be 0 or not set.
+- stig_id: WN22-CC-000410
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search, AllowIndexingEncryptedStoresOrItems, value]
+    eq: 0
+  rationale: Must prevent Indexing of encrypted files. HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search\AllowIndexingEncryptedStoresOrItems must be 0.
+- stig_id: WN22-CC-000420
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer, EnableUserControl, value]
+    eq: 0
+  rationale: Must prevent users from changing installation options. HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer\EnableUserControl must be 0.
+- stig_id: WN22-CC-000430
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer, AlwaysInstallElevated, value]
+    eq: 0
+  rationale: Must disable the Windows Installer Always install with elevated privileges option. HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer\AlwaysInstallElevated must be 0.
+- stig_id: WN22-CC-000440
+  facts: [registry]
+  logic:
+    any:
+    - path: &id018 [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer, SafeForScripting, value]
+      unset: true
+    - path: *id018
+      in: [0]
+  unmet_if:
+    path: *id018
+    eq: 1
+  rationale: Users must be notified if a web-based program attempts to install software. HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer\SafeForScripting must be 0 or not set.
+- stig_id: WN22-CC-000450
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System, DisableAutomaticRestartSignOn, value]
+    eq: 1
+  rationale: Must disable automatically signing in the last interactive user after a system-initiated restart. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\DisableAutomaticRestartSignOn
+    must be 1.
+- stig_id: WN22-CC-000460
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging, EnableScriptBlockLogging, value]
+    eq: 1
+  rationale: PowerShell script block logging must be enabled. HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging\EnableScriptBlockLogging must be 1.
+- stig_id: WN22-CC-000470
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client, AllowBasic, value]
+    eq: 0
+  rationale: Windows Remote Management (WinRM) client must not use Basic authentication. HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client\AllowBasic must be 0.
+- stig_id: WN22-CC-000480
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client, AllowUnencryptedTraffic, value]
+    eq: 0
+  rationale: Windows Remote Management (WinRM) client must not allow unencrypted traffic. HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client\AllowUnencryptedTraffic must be 0.
+- stig_id: WN22-CC-000490
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client, AllowDigest, value]
+    eq: 0
+  rationale: Windows Remote Management (WinRM) client must not use Digest authentication. HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client\AllowDigest must be 0.
+- stig_id: WN22-CC-000500
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service, AllowBasic, value]
+    eq: 0
+  rationale: Windows Remote Management (WinRM) service must not use Basic authentication. HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service\AllowBasic must be 0.
+- stig_id: WN22-CC-000510
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service, AllowUnencryptedTraffic, value]
+    eq: 0
+  rationale: Windows Remote Management (WinRM) service must not allow unencrypted traffic. HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service\AllowUnencryptedTraffic must be 0.
+- stig_id: WN22-CC-000520
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service, DisableRunAs, value]
+    eq: 1
+  rationale: Windows Remote Management (WinRM) service must not store RunAs credentials. HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service\DisableRunAs must be 1.
+- stig_id: WN22-CC-000530
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription, EnableTranscripting, value]
+    eq: 1
+  result_if_true: Not_Reviewed
+  observe:
+  - [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription, OutputDirectory, value]
+  rationale: PowerShell transcription must be enabled (EnableTranscripting = 1); when it is, the permissions of the transcript output directory are not collected and need review.
+- stig_id: WN22-DC-000010
+  facts: [domain_role, local_admins]
+  na_if: &id019 {path: domain_role.role, ne: dc}
+  logic: {path: local_admins.count, ge: 0}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  observe: [local_admins.members]
+  rationale: Only administrators responsible for the domain controller may be members of the Administrators group; the members are listed for the assessor. Applies to domain controllers only; the effective
+    policy on the domain controller is read.
+- stig_id: WN22-DC-000020
+  facts: [domain_role, security_policy]
+  na_if: *id019
+  logic: {path: security_policy.kerberos.TicketValidateClient, eq: 1}
+  rationale: Kerberos "Enforce user logon restrictions" (TicketValidateClient) must be enabled. Applies to domain controllers only; the effective policy on the domain controller is read.
+- stig_id: WN22-DC-000030
+  facts: [domain_role, security_policy]
+  na_if: *id019
+  logic: {path: security_policy.kerberos.MaxServiceAge, ge: 1, le: 600}
+  rationale: Kerberos maximum service ticket lifetime (MaxServiceAge) must be 1 to 600 minutes. Applies to domain controllers only; the effective policy on the domain controller is read.
+- stig_id: WN22-DC-000040
+  facts: [domain_role, security_policy]
+  na_if: *id019
+  logic: {path: security_policy.kerberos.MaxTicketAge, ge: 1, le: 10}
+  rationale: Kerberos maximum user ticket lifetime (MaxTicketAge) must be 1 to 10 hours. Applies to domain controllers only; the effective policy on the domain controller is read.
+- stig_id: WN22-DC-000050
+  facts: [domain_role, security_policy]
+  na_if: *id019
+  logic: {path: security_policy.kerberos.MaxRenewAge, le: 7}
+  rationale: Kerberos maximum user ticket renewal lifetime (MaxRenewAge) must be 7 days or less. Applies to domain controllers only; the effective policy on the domain controller is read.
+- stig_id: WN22-DC-000060
+  facts: [domain_role, security_policy]
+  na_if: *id019
+  logic: {path: security_policy.kerberos.MaxClockSkew, le: 5}
+  rationale: Kerberos maximum computer clock synchronization tolerance (MaxClockSkew) must be 5 minutes or less. Applies to domain controllers only; the effective policy on the domain controller is read.
+- stig_id: WN22-DC-000070
+  facts: [domain_role, acls]
+  na_if: *id019
+  logic:
+    path: acls.ntds_files[]
+    acl:
+      full: [S-1-5-18, S-1-5-32-544]
+  observe: [acls.ntds_dirs]
+  rationale: The Active Directory database and log files (NTDS folders from the registry) may only grant access to SYSTEM and Administrators. Applies to domain controllers only; the effective policy on
+    the domain controller is read.
+- stig_id: WN22-DC-000080
+  facts: [domain_role, acls]
+  na_if: *id019
+  logic:
+    path: acls.sysvol
+    acl:
+      full: [S-1-5-18, S-1-5-32-544, S-1-3-0]
+      read: any
+      standard: [S-1-1-0, S-1-5-11, S-1-5-32-545, S-1-5-7, S-1-5-4, S-1-5-2, S-1-5-32-546, S-1-5-21-*-513, S-1-5-21-*-514, S-1-5-21-*-515]
+  rationale: No standard user account or group may have more than read & execute on the SYSVOL folder; other principals with more access need review. Applies to domain controllers only; the effective policy
+    on the domain controller is read.
+- stig_id: WN22-DC-000090
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: Group Policy object permissions are Active Directory objects, not host facts.'
+- stig_id: WN22-DC-000100
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: Domain Controllers OU permissions are Active Directory objects, not host facts.'
+- stig_id: WN22-DC-000110
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: Organization OU permissions are Active Directory objects, not host facts.'
+- stig_id: WN22-DC-000120
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: Which shares are user data shares is a judgement.'
+- stig_id: WN22-DC-000130
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: Which roles and applications a domain controller requires is a judgement.'
+- stig_id: WN22-DC-000140
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: Network classification and NSA-approved encryption are not host facts.'
+- stig_id: WN22-DC-000150
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: Anonymous access is tested with an LDAP bind, which the read-only collector does not make.'
+- stig_id: WN22-DC-000160
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: MaxConnIdleTime is an Active Directory query policy, not collected.'
+- stig_id: WN22-DC-000170
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: Group Policy object auditing is set on Active Directory objects, not host facts.'
+- stig_id: WN22-DC-000180
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: Domain object auditing is set in Active Directory, not a host fact.'
+- stig_id: WN22-DC-000190
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: Infrastructure object auditing is set in Active Directory, not a host fact.'
+- stig_id: WN22-DC-000200
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: Domain Controllers OU auditing is set in Active Directory, not a host fact.'
+- stig_id: WN22-DC-000210
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: AdminSDHolder auditing is set in Active Directory, not a host fact.'
+- stig_id: WN22-DC-000220
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: RID Manager$ auditing is set in Active Directory, not a host fact.'
+- stig_id: WN22-DC-000230
+  facts: [domain_role, audit_policy]
+  na_if: *id019
+  logic: {path: audit_policy.computer_account_management.success, eq: true}
+  rationale: The audit policy must audit computer account management successes (auditpol). Applies to domain controllers only.
+- stig_id: WN22-DC-000240
+  facts: [domain_role, audit_policy]
+  na_if: *id019
+  logic: {path: audit_policy.directory_service_access.success, eq: true}
+  rationale: The audit policy must audit directory service access successes (auditpol). Applies to domain controllers only.
+- stig_id: WN22-DC-000250
+  facts: [domain_role, audit_policy]
+  na_if: *id019
+  logic: {path: audit_policy.directory_service_access.failure, eq: true}
+  rationale: The audit policy must audit directory service access failures (auditpol). Applies to domain controllers only.
+- stig_id: WN22-DC-000260
+  facts: [domain_role, audit_policy]
+  na_if: *id019
+  logic: {path: audit_policy.directory_service_changes.success, eq: true}
+  rationale: The audit policy must audit directory service changes successes (auditpol). Applies to domain controllers only.
+- stig_id: WN22-DC-000280
+  facts: [domain_role, certificates]
+  na_if: *id019
+  logic: {path: certificates.personal_count, ge: 1}
+  result_if_true: Not_Reviewed
+  rationale: 'A domain controller must have a PKI server certificate: an empty LocalMachine\My store is a finding; whether a certificate present is the domain controller''s needs review. Applies to domain
+    controllers only; the effective policy on the domain controller is read.'
+- stig_id: WN22-DC-000290
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: Whether the issuing CA is DoD PKI or an approved ECA needs the DoD CA list.'
+- stig_id: WN22-DC-000300
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: User account certificate mappings are Active Directory data.'
+- stig_id: WN22-DC-000310
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: Smart card enforcement on user accounts is Active Directory data.'
+- stig_id: WN22-DC-000320
+  facts: [domain_role, registry]
+  na_if: *id019
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters, LDAPServerIntegrity, value]
+    eq: 2
+  rationale: Domain controllers must require LDAP access signing. HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters\LDAPServerIntegrity must be 2. Applies to domain controllers only.
+- stig_id: WN22-DC-000330
+  facts: [domain_role, registry]
+  na_if: *id019
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters, RefusePasswordChange, value]
+    eq: 0
+  rationale: Domain controllers must be configured to allow reset of machine account passwords. HKLM\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters\RefusePasswordChange must be 0. Applies to domain
+    controllers only.
+- stig_id: WN22-DC-000340
+  facts: [domain_role, user_rights]
+  na_if: *id019
+  logic:
+    path: user_rights.SeNetworkLogonRight
+    subset: [S-1-5-32-544, S-1-5-11, S-1-5-9]
+  rationale: The SeNetworkLogonRight user right must only be assigned to Administrators, Authenticated Users, Enterprise Domain Controllers. An application that needs the right with vendor documentation
+    and ISSO approval is not visible on the host; the assessor records it. Applies to domain controllers only; the effective policy on the domain controller is read.
+- stig_id: WN22-DC-000350
+  facts: [domain_role, user_rights]
+  na_if: *id019
+  logic:
+    path: user_rights.SeMachineAccountPrivilege
+    subset: [S-1-5-32-544]
+  rationale: The SeMachineAccountPrivilege user right must only be assigned to Administrators. Applies to domain controllers only; the effective policy on the domain controller is read.
+- stig_id: WN22-DC-000360
+  facts: [domain_role, user_rights]
+  na_if: *id019
+  logic:
+    path: user_rights.SeRemoteInteractiveLogonRight
+    subset: [S-1-5-32-544]
+  rationale: The SeRemoteInteractiveLogonRight user right must only be assigned to Administrators. Applies to domain controllers only; the effective policy on the domain controller is read.
+- stig_id: WN22-DC-000370
+  facts: [domain_role, user_rights]
+  na_if: *id019
+  logic: {path: user_rights.SeDenyNetworkLogonRight, has_sid: S-1-5-32-546}
+  rationale: The SeDenyNetworkLogonRight user right must include Guests (S-1-5-32-546). Applies to domain controllers only; the effective policy on the domain controller is read.
+- stig_id: WN22-DC-000380
+  facts: [domain_role, user_rights]
+  na_if: *id019
+  logic: {path: user_rights.SeDenyBatchLogonRight, has_sid: S-1-5-32-546}
+  rationale: The SeDenyBatchLogonRight user right must include Guests (S-1-5-32-546). Applies to domain controllers only; the effective policy on the domain controller is read.
+- stig_id: WN22-DC-000390
+  facts: [domain_role, user_rights]
+  na_if: *id019
+  logic: {path: user_rights.SeDenyServiceLogonRight, empty: true}
+  rationale: The SeDenyServiceLogonRight user right must not be assigned to any account or group. Applies to domain controllers only; the effective policy on the domain controller is read.
+- stig_id: WN22-DC-000400
+  facts: [domain_role, user_rights]
+  na_if: *id019
+  logic: {path: user_rights.SeDenyInteractiveLogonRight, has_sid: S-1-5-32-546}
+  rationale: The SeDenyInteractiveLogonRight user right must include Guests (S-1-5-32-546). Applies to domain controllers only; the effective policy on the domain controller is read.
+- stig_id: WN22-DC-000410
+  facts: [domain_role, user_rights]
+  na_if: *id019
+  logic: {path: user_rights.SeDenyRemoteInteractiveLogonRight, has_sid: S-1-5-32-546}
+  rationale: The SeDenyRemoteInteractiveLogonRight user right must include Guests (S-1-5-32-546). Applies to domain controllers only; the effective policy on the domain controller is read.
+- stig_id: WN22-DC-000420
+  facts: [domain_role, user_rights]
+  na_if: *id019
+  logic:
+    path: user_rights.SeEnableDelegationPrivilege
+    subset: [S-1-5-32-544]
+  rationale: The SeEnableDelegationPrivilege user right must only be assigned to Administrators. Applies to domain controllers only; the effective policy on the domain controller is read.
+- stig_id: WN22-DC-000430
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: The krbtgt password age is Active Directory data.'
+- stig_id: WN22-MS-000010
+  facts: [domain_role, local_admins]
+  na_if: *id020
+  logic: {path: local_admins.count, ge: 0}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  observe: [local_admins.members]
+  rationale: Only administrators responsible for the system may be members of the local Administrators group; the members are listed for the assessor. Not applicable to domain controllers.
+- stig_id: WN22-MS-000020
+  facts: [domain_role, registry]
+  na_if:
+    path: domain_role.role
+    in: [dc, standalone]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System, LocalAccountTokenFilterPolicy, value]
+    eq: 0
+  rationale: Local administrator accounts must have their privileged token filtered to prevent elevated privileges from being used over the network on domain-joined member servers. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\LocalAccountTokenFilterPolicy
+    must be 0. Applies to domain-joined member servers only.
+- stig_id: WN22-MS-000030
+  facts: [domain_role, registry]
+  na_if:
+    path: domain_role.role
+    in: [dc, standalone]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\System, EnumerateLocalUsers, value]
+    eq: 0
+  rationale: Local users on domain-joined member servers must not be enumerated. HKLM\SOFTWARE\Policies\Microsoft\Windows\System\EnumerateLocalUsers must be 0. Applies to domain-joined member servers only.
+- stig_id: WN22-MS-000040
+  facts: [domain_role, registry]
+  na_if: *id020
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Rpc, RestrictRemoteClients, value]
+    eq: 1
+  rationale: Must restrict unauthenticated Remote Procedure Call (RPC) clients from connecting to the RPC server on domain-joined member servers and standalone or nondomain-joined systems. HKLM\SOFTWARE\Policies\Microsoft\Windows
+    NT\Rpc\RestrictRemoteClients must be 1. Not applicable to domain controllers.
+- stig_id: WN22-MS-000050
+  facts: [domain_role, registry]
+  na_if:
+    path: domain_role.role
+    in: [dc, standalone]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon, CachedLogonsCount, number]
+    ge: 0
+    le: 4
+  rationale: Cached logon credentials (Winlogon CachedLogonsCount, REG_SZ) must be 4 or less on domain-joined member servers.
+- stig_id: WN22-MS-000060
+  facts: [domain_role, registry]
+  na_if: *id020
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa, RestrictRemoteSAM, value]
+    eq: O:BAG:BAD:(A;;RC;;;BA)
+  rationale: Must restrict remote calls to the Security Account Manager (SAM) to Administrators on domain-joined member servers and standalone or nondomain-joined systems. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\RestrictRemoteSAM
+    must be O:BAG:BAD:(A;;RC;;;BA). Not applicable to domain controllers.
+- stig_id: WN22-MS-000070
+  facts: [domain_role, user_rights]
+  na_if: *id020
+  logic:
+    path: user_rights.SeNetworkLogonRight
+    subset: [S-1-5-32-544, S-1-5-11]
+  rationale: The SeNetworkLogonRight user right must only be assigned to Administrators, Authenticated Users. An application that needs the right with vendor documentation and ISSO approval is not visible
+    on the host; the assessor records it. Not applicable to domain controllers.
+- stig_id: WN22-MS-000080
+  facts: [domain_role, user_rights]
+  na_if: *id020
+  logic:
+    all:
+    - {path: user_rights.SeDenyNetworkLogonRight, has_sid: S-1-5-32-546}
+    - any:
+      - &id021 {path: domain_role.role, eq: standalone}
+      - all:
+        - {path: user_rights.SeDenyNetworkLogonRight, has_sid: S-1-5-21-*-519}
+        - {path: user_rights.SeDenyNetworkLogonRight, has_sid: S-1-5-21-*-512}
+        - any:
+          - {path: user_rights.SeDenyNetworkLogonRight, has_sid: S-1-5-114}
+          - {path: user_rights.SeDenyNetworkLogonRight, has_sid: S-1-5-113}
+  rationale: The SeDenyNetworkLogonRight user right must include Guests and, on domain-joined systems, Enterprise Admins, Domain Admins and Local account (S-1-5-113) or Local account and member of Administrators
+    group (S-1-5-114). Domain Admins (S-1-5-21-*-512) and Enterprise Admins (S-1-5-21-*-519) are required on domain-joined systems only. Not applicable to domain controllers.
+- stig_id: WN22-MS-000090
+  facts: [domain_role, user_rights]
+  na_if: *id020
+  logic:
+    all:
+    - {path: user_rights.SeDenyBatchLogonRight, has_sid: S-1-5-32-546}
+    - any:
+      - *id021
+      - all:
+        - {path: user_rights.SeDenyBatchLogonRight, has_sid: S-1-5-21-*-519}
+        - {path: user_rights.SeDenyBatchLogonRight, has_sid: S-1-5-21-*-512}
+  rationale: The SeDenyBatchLogonRight user right must include Guests and, on domain-joined systems, Enterprise Admins and Domain Admins. Domain Admins (S-1-5-21-*-512) and Enterprise Admins (S-1-5-21-*-519)
+    are required on domain-joined systems only. Not applicable to domain controllers.
+- stig_id: WN22-MS-000100
+  facts: [domain_role, user_rights]
+  na_if: *id020
+  logic:
+    any:
+    - all:
+      - {path: domain_role.role, eq: member}
+      - {path: user_rights.SeDenyServiceLogonRight, has_sid: S-1-5-21-*-519}
+      - {path: user_rights.SeDenyServiceLogonRight, has_sid: S-1-5-21-*-512}
+    - all:
+      - *id021
+      - {path: user_rights.SeDenyServiceLogonRight, empty: true}
+  rationale: The SeDenyServiceLogonRight user right must include Enterprise Admins and Domain Admins on domain-joined member servers and must be empty on standalone systems. Not applicable to domain controllers.
+- stig_id: WN22-MS-000110
+  facts: [domain_role, user_rights]
+  na_if: *id020
+  logic:
+    all:
+    - {path: user_rights.SeDenyInteractiveLogonRight, has_sid: S-1-5-32-546}
+    - any:
+      - *id021
+      - all:
+        - {path: user_rights.SeDenyInteractiveLogonRight, has_sid: S-1-5-21-*-519}
+        - {path: user_rights.SeDenyInteractiveLogonRight, has_sid: S-1-5-21-*-512}
+  rationale: The SeDenyInteractiveLogonRight user right must include Guests and, on domain-joined systems, Enterprise Admins and Domain Admins. Domain Admins (S-1-5-21-*-512) and Enterprise Admins (S-1-5-21-*-519)
+    are required on domain-joined systems only. Not applicable to domain controllers.
+- stig_id: WN22-MS-000120
+  facts: [domain_role, user_rights]
+  na_if: *id020
+  logic:
+    all:
+    - {path: user_rights.SeDenyRemoteInteractiveLogonRight, has_sid: S-1-5-32-546}
+    - any:
+      - *id021
+      - all:
+        - {path: user_rights.SeDenyRemoteInteractiveLogonRight, has_sid: S-1-5-21-*-519}
+        - {path: user_rights.SeDenyRemoteInteractiveLogonRight, has_sid: S-1-5-21-*-512}
+        - {path: user_rights.SeDenyRemoteInteractiveLogonRight, has_sid: S-1-5-113}
+  rationale: The SeDenyRemoteInteractiveLogonRight user right must include Guests and, on domain-joined systems, Enterprise Admins, Domain Admins and Local account (S-1-5-113). Domain Admins (S-1-5-21-*-512)
+    and Enterprise Admins (S-1-5-21-*-519) are required on domain-joined systems only. Not applicable to domain controllers.
+- stig_id: WN22-MS-000130
+  facts: [domain_role, user_rights]
+  na_if: *id020
+  logic: {path: user_rights.SeEnableDelegationPrivilege, empty: true}
+  rationale: The SeEnableDelegationPrivilege user right must not be assigned to any account or group. Not applicable to domain controllers.
+- stig_id: WN22-MS-000140
+  facts: [domain_role, services, device_guard, registry]
+  na_if:
+    any:
+    - {path: domain_role.role, ne: member}
+    - path: [services, MSExchangeServiceHost, present]
+      eq: true
+  logic: {path: device_guard.security_services_running, contains: 1}
+  observe:
+  - [registry, HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceGuard, LsaCfgFlags, value]
+  rationale: Credential Guard must be running (Win32_DeviceGuard SecurityServicesRunning includes 1) on domain-joined member servers. Not applicable to domain controllers, standalone systems and Exchange
+    servers (MSExchangeServiceHost present).
+- stig_id: WN22-PK-000010
+  facts: [certificates]
+  logic: {path: certificates.root_dod_subjects, empty: false}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'The DoD Root CA certificates in the Trusted Root store are listed as supporting evidence only: which certificates are current and required depends on DoD PKE guidance and the network, so the
+    assessor decides.'
+- stig_id: WN22-PK-000020
+  facts: [certificates]
+  logic: {path: certificates.interoperability, empty: false}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'The DoD Interoperability Root CA cross-certificates in the Untrusted store are listed as supporting evidence only: which certificates are current and required depends on DoD PKE guidance and
+    the network, so the assessor decides.'
+- stig_id: WN22-PK-000030
+  facts: [certificates]
+  logic: {path: certificates.cceb_interoperability, empty: false}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'The US DoD CCEB Interoperability Root CA cross-certificates in the Untrusted store are listed as supporting evidence only: which certificates are current and required depends on DoD PKE guidance
+    and the network, so the assessor decides.'
+- stig_id: WN22-SO-000010
+  facts: [security_policy]
+  logic: {path: security_policy.system_access.EnableGuestAccount, eq: 0}
+  rationale: The built-in Guest account must be disabled (EnableGuestAccount = 0).
+- stig_id: WN22-SO-000020
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa, LimitBlankPasswordUse, value]
+    eq: 1
+  rationale: Must prevent local accounts with blank passwords from being used from the network. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\LimitBlankPasswordUse must be 1.
+- stig_id: WN22-SO-000030
+  facts: [security_policy]
+  logic: {path: security_policy.administrator_renamed, eq: true}
+  rationale: The built-in Administrator account must be renamed (NewAdministratorName other than "Administrator").
+- stig_id: WN22-SO-000040
+  facts: [security_policy]
+  logic: {path: security_policy.guest_renamed, eq: true}
+  rationale: The built-in Guest account must be renamed (NewGuestName other than "Guest").
+- stig_id: WN22-SO-000050
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa, SCENoApplyLegacyAuditPolicy, value]
+    eq: 1
+  rationale: Must force audit policy subcategory settings to override audit policy category settings. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\SCENoApplyLegacyAuditPolicy must be 1.
+- stig_id: WN22-SO-000060
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters, RequireSignOrSeal, value]
+    eq: 1
+  rationale: 'Setting Domain member: Digitally encrypt or sign secure channel data (always) must be configured to Enabled. HKLM\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters\RequireSignOrSeal must
+    be 1.'
+- stig_id: WN22-SO-000070
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters, SealSecureChannel, value]
+    eq: 1
+  rationale: 'Setting Domain member: Digitally encrypt secure channel data (when possible) must be configured to Enabled. HKLM\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters\SealSecureChannel must
+    be 1.'
+- stig_id: WN22-SO-000080
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters, SignSecureChannel, value]
+    eq: 1
+  rationale: 'Setting Domain member: Digitally sign secure channel data (when possible) must be configured to Enabled. HKLM\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters\SignSecureChannel must be
+    1.'
+- stig_id: WN22-SO-000090
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters, DisablePasswordChange, value]
+    eq: 0
+  rationale: Computer account password must not be prevented from being reset. HKLM\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters\DisablePasswordChange must be 0.
+- stig_id: WN22-SO-000100
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters, MaximumPasswordAge, value]
+    ge: 1
+    le: 30
+  rationale: The machine account password maximum age (Netlogon MaximumPasswordAge) must be 1 to 30 days.
+- stig_id: WN22-SO-000110
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters, RequireStrongKey, value]
+    eq: 1
+  rationale: Must be configured to require a strong session key. HKLM\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters\RequireStrongKey must be 1.
+- stig_id: WN22-SO-000120
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System, InactivityTimeoutSecs, value]
+    ge: 1
+    le: 900
+  rationale: The machine inactivity limit (InactivityTimeoutSecs) must be 1 to 900 seconds (0 disables it).
+- stig_id: WN22-SO-000130
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System, LegalNoticeText, value]
+    dod_banner: true
+  rationale: The legal notice text (LegalNoticeText) must be the Standard Mandatory DoD Notice and Consent Banner (compared ignoring whitespace).
+- stig_id: WN22-SO-000150
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon, scremoveoption, value]
+    in: ['1', '2']
+  rationale: Smart card removal must lock the workstation or force logoff (scremoveoption "1" or "2"). A documented ISSO exception is not visible on the host; the assessor records it.
+- stig_id: WN22-SO-000160
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters, RequireSecuritySignature, value]
+    eq: 1
+  rationale: 'Setting Microsoft network client: Digitally sign communications (always) must be configured to Enabled. HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters\RequireSecuritySignature
+    must be 1.'
+- stig_id: WN22-SO-000170
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters, EnableSecuritySignature, value]
+    eq: 1
+  rationale: 'Setting Microsoft network client: Digitally sign communications (if server agrees) must be configured to Enabled. HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters\EnableSecuritySignature
+    must be 1.'
+- stig_id: WN22-SO-000180
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters, EnablePlainTextPassword, value]
+    eq: 0
+  rationale: Unencrypted passwords must not be sent to third-party Server Message Block (SMB) servers. HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters\EnablePlainTextPassword must be
+    0.
+- stig_id: WN22-SO-000190
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\LanManServer\Parameters, RequireSecuritySignature, value]
+    eq: 1
+  rationale: 'Setting Microsoft network server: Digitally sign communications (always) must be configured to Enabled. HKLM\SYSTEM\CurrentControlSet\Services\LanManServer\Parameters\RequireSecuritySignature
+    must be 1.'
+- stig_id: WN22-SO-000200
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\LanManServer\Parameters, EnableSecuritySignature, value]
+    eq: 1
+  rationale: 'Setting Microsoft network server: Digitally sign communications (if client agrees) must be configured to Enabled. HKLM\SYSTEM\CurrentControlSet\Services\LanManServer\Parameters\EnableSecuritySignature
+    must be 1.'
+- stig_id: WN22-SO-000210
+  facts: [security_policy]
+  logic: {path: security_policy.system_access.LSAAnonymousNameLookup, eq: 0}
+  rationale: Anonymous SID/Name translation (LSAAnonymousNameLookup) must be disabled.
+- stig_id: WN22-SO-000220
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa, RestrictAnonymousSAM, value]
+    eq: 1
+  rationale: Must not allow anonymous enumeration of Security Account Manager (SAM) accounts. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\RestrictAnonymousSAM must be 1.
+- stig_id: WN22-SO-000230
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa, RestrictAnonymous, value]
+    eq: 1
+  rationale: Must not allow anonymous enumeration of shares. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\RestrictAnonymous must be 1.
+- stig_id: WN22-SO-000240
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa, EveryoneIncludesAnonymous, value]
+    eq: 0
+  rationale: Must be configured to prevent anonymous users from having the same permissions as the Everyone group. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\EveryoneIncludesAnonymous must be 0.
+- stig_id: WN22-SO-000250
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\LanManServer\Parameters, RestrictNullSessAccess, value]
+    eq: 1
+  rationale: Must restrict anonymous access to Named Pipes and Shares. HKLM\SYSTEM\CurrentControlSet\Services\LanManServer\Parameters\RestrictNullSessAccess must be 1.
+- stig_id: WN22-SO-000260
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa, UseMachineId, value]
+    eq: 1
+  rationale: Services using Local System that use Negotiate when reverting to NTLM authentication must use the computer identity instead of authenticating anonymously. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\UseMachineId
+    must be 1.
+- stig_id: WN22-SO-000270
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0, allownullsessionfallback, value]
+    eq: 0
+  rationale: Must prevent NTLM from falling back to a Null session. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0\allownullsessionfallback must be 0.
+- stig_id: WN22-SO-000280
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa\pku2u, AllowOnlineID, value]
+    eq: 0
+  rationale: Must prevent PKU2U authentication using online identities. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\pku2u\AllowOnlineID must be 0.
+- stig_id: WN22-SO-000290
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters, SupportedEncryptionTypes, value]
+    eq: 2147483640
+  rationale: Kerberos encryption types must be configured to prevent the use of DES and RC4 encryption suites. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters\SupportedEncryptionTypes
+    must be 0x7ffffff8 (2147483640).
+- stig_id: WN22-SO-000300
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa, NoLMHash, value]
+    eq: 1
+  rationale: Must be configured to prevent the storage of the LAN Manager hash of passwords. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\NoLMHash must be 1.
+- stig_id: WN22-SO-000310
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa, LmCompatibilityLevel, value]
+    eq: 5
+  rationale: LAN Manager authentication level must be configured to send NTLMv2 response only and to refuse LM and NTLM. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\LmCompatibilityLevel must be 5.
+- stig_id: WN22-SO-000320
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\LDAP, LDAPClientIntegrity, value]
+    eq: 1
+  unmet_if:
+    any:
+    - path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\LDAP, LDAPClientIntegrity, value]
+      unset: true
+    - path: [registry, HKLM\SYSTEM\CurrentControlSet\Services\LDAP, LDAPClientIntegrity, value]
+      eq: 0
+  rationale: LDAP client signing must at least be negotiated (LDAPClientIntegrity = 1). Not set or 0 is a finding; 2 (require signing) is stricter than the check text's value and needs review.
+- stig_id: WN22-SO-000330
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0, NTLMMinClientSec, value]
+    eq: 537395200
+  rationale: Session security for NTLM SSP-based clients must be configured to require NTLMv2 session security and 128-bit encryption. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0\NTLMMinClientSec must
+    be 0x20080000 (537395200).
+- stig_id: WN22-SO-000340
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0, NTLMMinServerSec, value]
+    eq: 537395200
+  rationale: Session security for NTLM SSP-based servers must be configured to require NTLMv2 session security and 128-bit encryption. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0\NTLMMinServerSec must
+    be 0x20080000 (537395200).
+- stig_id: WN22-SO-000350
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SOFTWARE\Policies\Microsoft\Cryptography, ForceKeyProtection, value]
+    eq: 2
+  rationale: Users must be required to enter a password to access private keys stored on the computer. HKLM\SOFTWARE\Policies\Microsoft\Cryptography\ForceKeyProtection must be 2.
+- stig_id: WN22-SO-000360
+  facts: [registry, services]
+  na_if:
+    path: [services, SPTimerV4, status]
+    eq: Running
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa\FIPSAlgorithmPolicy, Enabled, value]
+    eq: 1
+  rationale: Must be configured to use FIPS-compliant algorithms for encryption, hashing, and signing. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\FIPSAlgorithmPolicy\Enabled must be 1. Not applicable when
+    SharePoint runs on the host (SharePoint Timer service SPTimerV4 running).
+- stig_id: WN22-SO-000370
+  facts: [registry]
+  logic:
+    path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Session Manager, ProtectionMode, value]
+    eq: 1
+  rationale: Default permissions of global system objects must be strengthened. HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\ProtectionMode must be 1.
+- stig_id: WN22-SO-000380
+  facts: [os, registry]
+  na_if: *id022
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System, FilterAdministratorToken, value]
+    eq: 1
+  rationale: User Account Control (UAC) approval mode for the built-in Administrator must be enabled. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\FilterAdministratorToken must be 1. UAC
+    requirements are not applicable to Server Core installations.
+- stig_id: WN22-SO-000390
+  facts: [os, registry]
+  na_if: *id022
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System, EnableUIADesktopToggle, value]
+    eq: 0
+  rationale: UIAccess applications must not be allowed to prompt for elevation without using the secure desktop. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\EnableUIADesktopToggle must
+    be 0. UAC requirements are not applicable to Server Core installations.
+- stig_id: WN22-SO-000400
+  facts: [os, registry]
+  na_if: *id022
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System, ConsentPromptBehaviorAdmin, value]
+    in: [1, 2]
+  rationale: User Account Control (UAC) must, at a minimum, prompt administrators for consent on the secure desktop. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\ConsentPromptBehaviorAdmin
+    must be 1 or 2. UAC requirements are not applicable to Server Core installations.
+- stig_id: WN22-SO-000410
+  facts: [os, registry]
+  na_if: *id022
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System, ConsentPromptBehaviorUser, value]
+    eq: 0
+  rationale: User Account Control (UAC) must automatically deny standard user requests for elevation. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\ConsentPromptBehaviorUser must be 0.
+    UAC requirements are not applicable to Server Core installations.
+- stig_id: WN22-SO-000420
+  facts: [os, registry]
+  na_if: *id022
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System, EnableInstallerDetection, value]
+    eq: 1
+  rationale: User Account Control (UAC) must be configured to detect application installations and prompt for elevation. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\EnableInstallerDetection
+    must be 1. UAC requirements are not applicable to Server Core installations.
+- stig_id: WN22-SO-000430
+  facts: [os, registry]
+  na_if: *id022
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System, EnableSecureUIAPaths, value]
+    eq: 1
+  rationale: User Account Control (UAC) must only elevate UIAccess applications that are installed in secure locations. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\EnableSecureUIAPaths
+    must be 1. UAC requirements are not applicable to Server Core installations.
+- stig_id: WN22-SO-000440
+  facts: [os, registry]
+  na_if: *id022
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System, EnableLUA, value]
+    eq: 1
+  rationale: User Account Control (UAC) must run all administrators in Admin Approval Mode, enabling UAC. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\EnableLUA must be 1. UAC requirements
+    are not applicable to Server Core installations.
+- stig_id: WN22-SO-000450
+  facts: [os, registry]
+  na_if: *id022
+  logic:
+    path: [registry, HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System, EnableVirtualization, value]
+    eq: 1
+  rationale: User Account Control (UAC) must virtualize file and registry write failures to per-user locations. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\EnableVirtualization must be
+    1. UAC requirements are not applicable to Server Core installations.
+- stig_id: WN22-UC-000010
+  facts: [registry]
+  logic:
+    any:
+    - path: [registry, HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Attachments, SaveZoneInformation, value]
+      unset: true
+    - path: [registry, HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Attachments, SaveZoneInformation, value]
+      eq: 2
+  unmet_if:
+    path: [registry, HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Attachments, SaveZoneInformation, value]
+    eq: 1
+  result_if_true: Not_Reviewed
+  rationale: Zone information must be preserved (HKCU SaveZoneInformation not set or 2) for every interactive user profile. Only the profile of the account that ran the collector is read, so a value of
+    1 is a finding but a compliant value does not cover the other profiles.
+- stig_id: WN22-UR-000010
+  facts: [user_rights]
+  logic: {path: user_rights.SeTrustedCredManAccessPrivilege, empty: true}
+  rationale: The SeTrustedCredManAccessPrivilege user right must not be assigned to any account or group.
+- stig_id: WN22-UR-000020
+  facts: [user_rights]
+  logic: {path: user_rights.SeTcbPrivilege, empty: true}
+  rationale: The SeTcbPrivilege user right must not be assigned to any account or group. An application that needs the right with vendor documentation and ISSO approval is not visible on the host; the assessor
+    records it.
+- stig_id: WN22-UR-000030
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeInteractiveLogonRight
+    subset: [S-1-5-32-544]
+  rationale: The SeInteractiveLogonRight user right must only be assigned to Administrators. An application that needs the right with vendor documentation and ISSO approval is not visible on the host; the
+    assessor records it.
+- stig_id: WN22-UR-000040
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeBackupPrivilege
+    subset: [S-1-5-32-544]
+  rationale: The SeBackupPrivilege user right must only be assigned to Administrators. An application that needs the right with vendor documentation and ISSO approval is not visible on the host; the assessor
+    records it.
+- stig_id: WN22-UR-000050
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeCreatePagefilePrivilege
+    subset: [S-1-5-32-544]
+  rationale: The SeCreatePagefilePrivilege user right must only be assigned to Administrators.
+- stig_id: WN22-UR-000060
+  facts: [user_rights]
+  logic: {path: user_rights.SeCreateTokenPrivilege, empty: true}
+  rationale: The SeCreateTokenPrivilege user right must not be assigned to any account or group. An application that needs the right with vendor documentation and ISSO approval is not visible on the host;
+    the assessor records it.
+- stig_id: WN22-UR-000070
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeCreateGlobalPrivilege
+    subset: [S-1-5-32-544, S-1-5-6, S-1-5-19, S-1-5-20]
+  rationale: The SeCreateGlobalPrivilege user right must only be assigned to Administrators, Service, Local Service, Network Service. An application that needs the right with vendor documentation and ISSO
+    approval is not visible on the host; the assessor records it.
+- stig_id: WN22-UR-000080
+  facts: [user_rights]
+  logic: {path: user_rights.SeCreatePermanentPrivilege, empty: true}
+  rationale: The SeCreatePermanentPrivilege user right must not be assigned to any account or group.
+- stig_id: WN22-UR-000090
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeCreateSymbolicLinkPrivilege
+    subset: [S-1-5-32-544, S-1-5-83-0]
+  rationale: The SeCreateSymbolicLinkPrivilege user right must only be assigned to Administrators, Virtual Machines. Virtual Machines (S-1-5-83-0) is allowed on Hyper-V hosts.
+- stig_id: WN22-UR-000100
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeDebugPrivilege
+    subset: [S-1-5-32-544]
+  rationale: The SeDebugPrivilege user right must only be assigned to Administrators. An application that needs the right with vendor documentation and ISSO approval is not visible on the host; the assessor
+    records it.
+- stig_id: WN22-UR-000110
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeRemoteShutdownPrivilege
+    subset: [S-1-5-32-544]
+  rationale: The SeRemoteShutdownPrivilege user right must only be assigned to Administrators.
+- stig_id: WN22-UR-000120
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeAuditPrivilege
+    subset: [S-1-5-19, S-1-5-20]
+  rationale: The SeAuditPrivilege user right must only be assigned to Local Service, Network Service. An application that needs the right with vendor documentation and ISSO approval is not visible on the
+    host; the assessor records it.
+- stig_id: WN22-UR-000130
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeImpersonatePrivilege
+    subset: [S-1-5-32-544, S-1-5-6, S-1-5-19, S-1-5-20]
+  rationale: The SeImpersonatePrivilege user right must only be assigned to Administrators, Service, Local Service, Network Service. An application that needs the right with vendor documentation and ISSO
+    approval is not visible on the host; the assessor records it.
+- stig_id: WN22-UR-000140
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeIncreaseBasePriorityPrivilege
+    subset: [S-1-5-32-544]
+  rationale: The SeIncreaseBasePriorityPrivilege user right must only be assigned to Administrators. An application that needs the right with vendor documentation and ISSO approval is not visible on the
+    host; the assessor records it.
+- stig_id: WN22-UR-000150
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeLoadDriverPrivilege
+    subset: [S-1-5-32-544]
+  rationale: The SeLoadDriverPrivilege user right must only be assigned to Administrators.
+- stig_id: WN22-UR-000160
+  facts: [user_rights]
+  logic: {path: user_rights.SeLockMemoryPrivilege, empty: true}
+  rationale: The SeLockMemoryPrivilege user right must not be assigned to any account or group. An application that needs the right with vendor documentation and ISSO approval is not visible on the host;
+    the assessor records it.
+- stig_id: WN22-UR-000170
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeSecurityPrivilege
+    subset: [S-1-5-32-544]
+  result_if_false: Not_Reviewed
+  rationale: The SeSecurityPrivilege user right must only be assigned to Administrators. An organization's Auditors group (or a documented application account) may also hold it, which only the assessor
+    can confirm, so other holders need review.
+- stig_id: WN22-UR-000180
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeSystemEnvironmentPrivilege
+    subset: [S-1-5-32-544]
+  rationale: The SeSystemEnvironmentPrivilege user right must only be assigned to Administrators.
+- stig_id: WN22-UR-000190
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeManageVolumePrivilege
+    subset: [S-1-5-32-544]
+  rationale: The SeManageVolumePrivilege user right must only be assigned to Administrators.
+- stig_id: WN22-UR-000200
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeProfileSingleProcessPrivilege
+    subset: [S-1-5-32-544]
+  rationale: The SeProfileSingleProcessPrivilege user right must only be assigned to Administrators.
+- stig_id: WN22-UR-000210
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeRestorePrivilege
+    subset: [S-1-5-32-544]
+  rationale: The SeRestorePrivilege user right must only be assigned to Administrators. An application that needs the right with vendor documentation and ISSO approval is not visible on the host; the assessor
+    records it.
+- stig_id: WN22-UR-000220
+  facts: [user_rights]
+  logic:
+    path: user_rights.SeTakeOwnershipPrivilege
+    subset: [S-1-5-32-544]
+  rationale: The SeTakeOwnershipPrivilege user right must only be assigned to Administrators. An application that needs the right with vendor documentation and ISSO approval is not visible on the host;
+    the assessor records it.
+- stig_id: WN22-DC-000406
+  facts: [domain_role]
+  na_if: *id019
+  logic: {path: domain_role.role, eq: dc}
+  result_if_true: Not_Reviewed
+  result_if_false: Not_Reviewed
+  rationale: 'Applies to domain controllers only, where it needs manual review: The KDC name-based strong mapping policy value is not named in the check text.'
+- stig_id: WN22-AU-000583
+  facts: [audit_policy]
+  logic: {path: audit_policy.handle_manipulation.failure, eq: true}
+  rationale: The audit policy must audit handle manipulation failures (auditpol).
+- stig_id: WN22-AU-000585
+  facts: [audit_policy]
+  logic: {path: audit_policy.registry.failure, eq: true}
+  rationale: The audit policy must audit registry failures (auditpol).
+- stig_id: WN22-AU-000586
+  facts: [audit_policy]
+  logic: {path: audit_policy.registry.success, eq: true}
+  rationale: The audit policy must audit registry successes (auditpol).
+- stig_id: WN22-AU-000587
+  facts: [audit_policy]
+  logic: {path: audit_policy.sensitive_privilege_use.success, eq: true}
+  rationale: The audit policy must audit sensitive privilege use successes (auditpol).
+- stig_id: WN22-AU-000588
+  facts: [audit_policy]
+  logic: {path: audit_policy.sensitive_privilege_use.failure, eq: true}
+  rationale: The audit policy must audit sensitive privilege use failures (auditpol).

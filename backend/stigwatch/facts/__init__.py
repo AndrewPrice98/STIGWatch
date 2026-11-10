@@ -1,6 +1,6 @@
 """Fact parsing for collector output.
 
-Each collector module (``linux``, later ``windows``) exposes:
+Each collector module (``linux``, ``windows``) exposes:
 
 - ``COLLECTOR``: the ``collector`` value of its JSON files;
 - ``BENCHMARK``: the benchmark id its facts are scanned against;
@@ -10,6 +10,9 @@ Each collector module (``linux``, later ``windows``) exposes:
   normalised for the checks. A fact that could not be read, or could not be parsed, has
   status ``unavailable`` and never decides a rule;
 - ``OPERATORS``: optional collector-specific condition operators (:class:`Operator`).
+
+A fact may also carry ``partial``: a mapping that follows the keys of its value and
+gives, for a part that could not be read, the reason (shown as the observed evidence).
 """
 
 from __future__ import annotations

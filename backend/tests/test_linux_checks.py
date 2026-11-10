@@ -82,7 +82,7 @@ def test_coverage_cli(capsys):
     out = capsys.readouterr().out
     assert "174 of 191 rules automated" in out
     assert "CAT I manual: none" in out
-    assert main(["coverage", "windows-server-2022"]) == 1
+    assert main(["coverage", "no-such-benchmark"]) == 1
 
 
 def test_every_rule_gets_exactly_one_result(bench):

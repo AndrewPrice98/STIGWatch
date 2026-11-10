@@ -81,19 +81,81 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # Runs the real Windows collector on Windows Server 2022, elevated (the runner's default),
+  # under PowerShell 7 and Windows PowerShell 5.1, and keeps both outputs as artifacts.
+  windows-collector:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install dependencies
+        run: pip install -r backend/requirements-dev.txt
+      - name: Collector tests (Windows PowerShell 5.1)
+        working-directory: backend
+        env:
+          STIGWATCH_RUN_COLLECTOR: "1"
+        run: python -m pytest -q tests/test_windows_checks.py -k collector
+      - name: Run the collector under PowerShell 7
+        shell: pwsh
+        run: |
+          $PSVersionTable.PSVersion.ToString()
+          pwsh -NoProfile -ExecutionPolicy Bypass -File collectors/collect-windows.ps1 -OutFile out-pwsh.json -RedactNames
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run the collector under Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $PSVersionTable.PSVersion.ToString()
+          powershell -NoProfile -ExecutionPolicy Bypass -File collectors/collect-windows.ps1 -OutFile out-ps51.json -RedactNames
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate the PowerShell 7 output
+        working-directory: backend
+        run: python -m stigwatch collect-parse windows ../out-pwsh.json --min-ok 15
+      - name: Validate the Windows PowerShell 5.1 output
+        working-directory: backend
+        run: python -m stigwatch collect-parse windows ../out-ps51.json --min-ok 15
+      - name: Scan the PowerShell 7 output
+        working-directory: backend
+        run: python -m stigwatch scan ../out-pwsh.json
+      - name: Scan the Windows PowerShell 5.1 output
+        working-directory: backend
+        run: python -m stigwatch scan ../out-ps51.json
+      - name: Keep the collector output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-collector-output
+          path: out-*.json
+          if-no-files-found: warn
+          retention-days: 14
+
   frontend:
+    # Skipped step by step until the dashboard adds package.json (Task 9). hashFiles() is
+    # not available in a job-level `if`, so the condition sits on each step.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: No frontend yet
+        if: hashFiles('package.json') == ''
+        run: echo "package.json not present; frontend steps skipped"
       - uses: actions/setup-node@v4
+        if: hashFiles('package.json') != ''
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
-      - run: npm audit --audit-level=high
+      - if: hashFiles('package.json') != ''
+        run: npm ci
+      - if: hashFiles('package.json') != ''
+        run: npm test
+      - if: hashFiles('package.json') != ''
+        run: npm run build
+      - if: hashFiles('package.json') != ''
+        run: npm audit --audit-level=high
 
   audit:
     runs-on: ubuntu-latest

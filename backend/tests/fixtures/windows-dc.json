@@ -1,0 +1,1696 @@
+{
+ "collector": "windows",
+ "version": 1,
+ "collected_at": "2026-11-09T15:04:27Z",
+ "host": {
+  "name": "ws22-dc-01",
+  "os": "Microsoft Windows Server 2022 Datacenter",
+  "build": "20348"
+ },
+ "privileged": true,
+ "redacted": false,
+ "powershell": "5.1.20348.4294",
+ "facts": {
+  "os": {
+   "status": "ok",
+   "value": {
+    "caption": "Microsoft Windows Server 2022 Datacenter",
+    "version": "10.0.20348",
+    "build_number": "20348",
+    "product_type": 2,
+    "installation_type": "Server",
+    "display_version": "21H2",
+    "edition_id": "ServerDatacenter",
+    "ubr": 4405,
+    "firmware_type": "UEFI"
+   },
+   "reason": null,
+   "command": "Get-CimInstance Win32_OperatingSystem; registry HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion (InstallationType, DisplayVersion, UBR, EditionID); $env:firmware_type"
+  },
+  "domain_role": {
+   "status": "ok",
+   "value": {
+    "domain_role": 5,
+    "part_of_domain": true
+   },
+   "reason": null,
+   "command": "Get-CimInstance Win32_ComputerSystem (DomainRole, PartOfDomain)"
+  },
+  "security_policy": {
+   "status": "ok",
+   "value": {
+    "System Access": {
+     "MinimumPasswordAge": "1",
+     "MaximumPasswordAge": "60",
+     "MinimumPasswordLength": "14",
+     "PasswordComplexity": "1",
+     "PasswordHistorySize": "24",
+     "LockoutBadCount": "3",
+     "ResetLockoutCount": "15",
+     "LockoutDuration": "15",
+     "RequireLogonToChangePassword": "0",
+     "ForceLogoffWhenHourExpire": "0",
+     "NewAdministratorName": "\"xadmin-local\"",
+     "NewGuestName": "\"xvisitor\"",
+     "ClearTextPassword": "0",
+     "LSAAnonymousNameLookup": "0",
+     "EnableAdminAccount": "1",
+     "EnableGuestAccount": "0"
+    },
+    "Kerberos Policy": {
+     "MaxTicketAge": "10",
+     "MaxRenewAge": "7",
+     "MaxServiceAge": "600",
+     "MaxClockSkew": "5",
+     "TicketValidateClient": "1"
+    }
+   },
+   "reason": null,
+   "command": "secedit /export /mergedpolicy /cfg \"<temp file in $env:TEMP, deleted after reading>\" /areas SECURITYPOLICY USER_RIGHTS /quiet"
+  },
+  "user_rights": {
+   "status": "ok",
+   "value": {
+    "SeAssignPrimaryTokenPrivilege": "*S-1-5-19,*S-1-5-20",
+    "SeAuditPrivilege": "*S-1-5-19,*S-1-5-20",
+    "SeBackupPrivilege": "*S-1-5-32-544",
+    "SeBatchLogonRight": "*S-1-5-32-544,*S-1-5-32-551,*S-1-5-32-559",
+    "SeChangeNotifyPrivilege": "*S-1-1-0,*S-1-5-19,*S-1-5-20,*S-1-5-32-544,*S-1-5-32-545,*S-1-5-32-551",
+    "SeCreateGlobalPrivilege": "*S-1-5-19,*S-1-5-20,*S-1-5-32-544,*S-1-5-6",
+    "SeCreatePagefilePrivilege": "*S-1-5-32-544",
+    "SeCreateSymbolicLinkPrivilege": "*S-1-5-32-544",
+    "SeDebugPrivilege": "*S-1-5-32-544",
+    "SeImpersonatePrivilege": "*S-1-5-19,*S-1-5-20,*S-1-5-32-544,*S-1-5-6",
+    "SeIncreaseBasePriorityPrivilege": "*S-1-5-32-544",
+    "SeIncreaseQuotaPrivilege": "*S-1-5-19,*S-1-5-20,*S-1-5-32-544",
+    "SeIncreaseWorkingSetPrivilege": "*S-1-5-32-545",
+    "SeInteractiveLogonRight": "*S-1-5-32-544",
+    "SeLoadDriverPrivilege": "*S-1-5-32-544",
+    "SeManageVolumePrivilege": "*S-1-5-32-544",
+    "SeProfileSingleProcessPrivilege": "*S-1-5-32-544",
+    "SeRemoteShutdownPrivilege": "*S-1-5-32-544",
+    "SeRestorePrivilege": "*S-1-5-32-544",
+    "SeSecurityPrivilege": "*S-1-5-32-544",
+    "SeServiceLogonRight": "*S-1-5-80-0",
+    "SeShutdownPrivilege": "*S-1-5-32-544",
+    "SeSystemEnvironmentPrivilege": "*S-1-5-32-544",
+    "SeSystemProfilePrivilege": "*S-1-5-32-544,*S-1-5-80-3139157870-2983391045-3678747466-658725712-1809340420",
+    "SeSystemtimePrivilege": "*S-1-5-19,*S-1-5-32-544",
+    "SeTakeOwnershipPrivilege": "*S-1-5-32-544",
+    "SeTimeZonePrivilege": "*S-1-5-19,*S-1-5-32-544",
+    "SeNetworkLogonRight": "*S-1-5-32-544,*S-1-5-11,*S-1-5-9",
+    "SeMachineAccountPrivilege": "*S-1-5-32-544",
+    "SeRemoteInteractiveLogonRight": "*S-1-5-32-544",
+    "SeEnableDelegationPrivilege": "*S-1-5-32-544",
+    "SeDenyNetworkLogonRight": "*S-1-5-32-546",
+    "SeDenyBatchLogonRight": "*S-1-5-32-546",
+    "SeDenyInteractiveLogonRight": "*S-1-5-32-546",
+    "SeDenyRemoteInteractiveLogonRight": "*S-1-5-32-546"
+   },
+   "reason": null,
+   "command": "secedit /export /mergedpolicy /cfg \"<temp file in $env:TEMP, deleted after reading>\" /areas SECURITYPOLICY USER_RIGHTS /quiet"
+  },
+  "audit_policy": {
+   "status": "ok",
+   "value": {
+    "source": "backup",
+    "subcategories": [
+     {
+      "guid": "{0CCE9210-69AE-11D9-BED3-505054503030}",
+      "name": "Security State Change",
+      "inclusion": "Success",
+      "setting_value": "1"
+     },
+     {
+      "guid": "{0CCE9211-69AE-11D9-BED3-505054503030}",
+      "name": "Security System Extension",
+      "inclusion": "Success",
+      "setting_value": "1"
+     },
+     {
+      "guid": "{0CCE9212-69AE-11D9-BED3-505054503030}",
+      "name": "System Integrity",
+      "inclusion": "Success and Failure",
+      "setting_value": "3"
+     },
+     {
+      "guid": "{0CCE9213-69AE-11D9-BED3-505054503030}",
+      "name": "IPsec Driver",
+      "inclusion": "Success and Failure",
+      "setting_value": "3"
+     },
+     {
+      "guid": "{0CCE9214-69AE-11D9-BED3-505054503030}",
+      "name": "Other System Events",
+      "inclusion": "Success and Failure",
+      "setting_value": "3"
+     },
+     {
+      "guid": "{0CCE9215-69AE-11D9-BED3-505054503030}",
+      "name": "Logon",
+      "inclusion": "Success and Failure",
+      "setting_value": "3"
+     },
+     {
+      "guid": "{0CCE9216-69AE-11D9-BED3-505054503030}",
+      "name": "Logoff",
+      "inclusion": "Success",
+      "setting_value": "1"
+     },
+     {
+      "guid": "{0CCE9217-69AE-11D9-BED3-505054503030}",
+      "name": "Account Lockout",
+      "inclusion": "Failure",
+      "setting_value": "2"
+     },
+     {
+      "guid": "{0CCE921B-69AE-11D9-BED3-505054503030}",
+      "name": "Special Logon",
+      "inclusion": "Success",
+      "setting_value": "1"
+     },
+     {
+      "guid": "{0CCE921C-69AE-11D9-BED3-505054503030}",
+      "name": "Other Logon/Logoff Events",
+      "inclusion": "No Auditing",
+      "setting_value": "0"
+     },
+     {
+      "guid": "{0CCE9249-69AE-11D9-BED3-505054503030}",
+      "name": "Group Membership",
+      "inclusion": "Success",
+      "setting_value": "1"
+     },
+     {
+      "guid": "{0CCE921D-69AE-11D9-BED3-505054503030}",
+      "name": "File System",
+      "inclusion": "No Auditing",
+      "setting_value": "0"
+     },
+     {
+      "guid": "{0CCE921E-69AE-11D9-BED3-505054503030}",
+      "name": "Registry",
+      "inclusion": "Success and Failure",
+      "setting_value": "3"
+     },
+     {
+      "guid": "{0CCE9223-69AE-11D9-BED3-505054503030}",
+      "name": "Handle Manipulation",
+      "inclusion": "Failure",
+      "setting_value": "2"
+     },
+     {
+      "guid": "{0CCE9227-69AE-11D9-BED3-505054503030}",
+      "name": "Other Object Access Events",
+      "inclusion": "Success and Failure",
+      "setting_value": "3"
+     },
+     {
+      "guid": "{0CCE9245-69AE-11D9-BED3-505054503030}",
+      "name": "Removable Storage",
+      "inclusion": "Success and Failure",
+      "setting_value": "3"
+     },
+     {
+      "guid": "{0CCE9228-69AE-11D9-BED3-505054503030}",
+      "name": "Sensitive Privilege Use",
+      "inclusion": "Success and Failure",
+      "setting_value": "3"
+     },
+     {
+      "guid": "{0CCE922B-69AE-11D9-BED3-505054503030}",
+      "name": "Process Creation",
+      "inclusion": "Success",
+      "setting_value": "1"
+     },
+     {
+      "guid": "{0CCE9248-69AE-11D9-BED3-505054503030}",
+      "name": "Plug and Play Events",
+      "inclusion": "Success",
+      "setting_value": "1"
+     },
+     {
+      "guid": "{0CCE922F-69AE-11D9-BED3-505054503030}",
+      "name": "Audit Policy Change",
+      "inclusion": "Success and Failure",
+      "setting_value": "3"
+     },
+     {
+      "guid": "{0CCE9230-69AE-11D9-BED3-505054503030}",
+      "name": "Authentication Policy Change",
+      "inclusion": "Success",
+      "setting_value": "1"
+     },
+     {
+      "guid": "{0CCE9231-69AE-11D9-BED3-505054503030}",
+      "name": "Authorization Policy Change",
+      "inclusion": "Success",
+      "setting_value": "1"
+     },
+     {
+      "guid": "{0CCE9235-69AE-11D9-BED3-505054503030}",
+      "name": "User Account Management",
+      "inclusion": "Success and Failure",
+      "setting_value": "3"
+     },
+     {
+      "guid": "{0CCE9236-69AE-11D9-BED3-505054503030}",
+      "name": "Computer Account Management",
+      "inclusion": "Success",
+      "setting_value": "1"
+     },
+     {
+      "guid": "{0CCE9237-69AE-11D9-BED3-505054503030}",
+      "name": "Security Group Management",
+      "inclusion": "Success",
+      "setting_value": "1"
+     },
+     {
+      "guid": "{0CCE923A-69AE-11D9-BED3-505054503030}",
+      "name": "Other Account Management Events",
+      "inclusion": "Success",
+      "setting_value": "1"
+     },
+     {
+      "guid": "{0CCE923B-69AE-11D9-BED3-505054503030}",
+      "name": "Directory Service Access",
+      "inclusion": "Success and Failure",
+      "setting_value": "3"
+     },
+     {
+      "guid": "{0CCE923C-69AE-11D9-BED3-505054503030}",
+      "name": "Directory Service Changes",
+      "inclusion": "Success",
+      "setting_value": "1"
+     },
+     {
+      "guid": "{0CCE923F-69AE-11D9-BED3-505054503030}",
+      "name": "Credential Validation",
+      "inclusion": "Success and Failure",
+      "setting_value": "3"
+     }
+    ]
+   },
+   "reason": null,
+   "command": "auditpol /backup /file:\"<temp file in $env:TEMP, deleted after reading>\""
+  },
+  "registry": {
+   "status": "ok",
+   "value": {
+    "values": [
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization",
+      "name": "NoLockScreenSlideshow",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\Wdigest",
+      "name": "UseLogonCredential",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip6\\Parameters",
+      "name": "DisableIPSourceRouting",
+      "state": "set",
+      "type": "DWord",
+      "data": 2
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters",
+      "name": "DisableIPSourceRouting",
+      "state": "set",
+      "type": "DWord",
+      "data": 2
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters",
+      "name": "EnableICMPRedirect",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netbt\\Parameters",
+      "name": "NoNameReleaseOnDemand",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation",
+      "name": "AllowInsecureGuestAuth",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths",
+      "name": "\\\\*\\NETLOGON",
+      "state": "set",
+      "type": "String",
+      "data": "RequireMutualAuthentication=1, RequireIntegrity=1"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths",
+      "name": "\\\\*\\SYSVOL",
+      "state": "set",
+      "type": "String",
+      "data": "RequireMutualAuthentication=1, RequireIntegrity=1"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Audit",
+      "name": "ProcessCreationIncludeCmdLine_Enabled",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CredentialsDelegation",
+      "name": "AllowProtectedCreds",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard",
+      "name": "EnableVirtualizationBasedSecurity",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard",
+      "name": "RequirePlatformSecurityFeatures",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard",
+      "name": "LsaCfgFlags",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Policies\\EarlyLaunch",
+      "name": "DriverLoadPolicy",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Group Policy\\{35378EAC-683F-11D2-A89A-00C04FBBCFA2}",
+      "name": "NoGPOListChanges",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers",
+      "name": "DisableWebPnPDownload",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers",
+      "name": "DisableHTTPPrinting",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+      "name": "DontDisplayNetworkSelectionUI",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+      "name": "EnableSmartScreen",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+      "name": "EnumerateLocalUsers",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\0e796bdb-100d-47d6-a2d5-f7d2daa51f51",
+      "name": "DCSettingIndex",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\0e796bdb-100d-47d6-a2d5-f7d2daa51f51",
+      "name": "ACSettingIndex",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppCompat",
+      "name": "DisableInventory",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+      "name": "NoAutoplayfornonVolume",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+      "name": "NoDataExecutionPrevention",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+      "name": "NoHeapTerminationOnCorruption",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer",
+      "name": "NoAutorun",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer",
+      "name": "NoDriveTypeAutoRun",
+      "state": "set",
+      "type": "DWord",
+      "data": 255
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer",
+      "name": "PreXPSP2ShellProtocolBehavior",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI",
+      "name": "EnumerateAdministrators",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+      "name": "AllowTelemetry",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeliveryOptimization",
+      "name": "DODownloadMode",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Application",
+      "name": "MaxSize",
+      "state": "set",
+      "type": "DWord",
+      "data": 32768
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Security",
+      "name": "MaxSize",
+      "state": "set",
+      "type": "DWord",
+      "data": 5120000
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\System",
+      "name": "MaxSize",
+      "state": "set",
+      "type": "DWord",
+      "data": 32768
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+      "name": "DisablePasswordSaving",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+      "name": "fDisableCdm",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+      "name": "fPromptForPassword",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+      "name": "fEncryptRPCTraffic",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+      "name": "MinEncryptionLevel",
+      "state": "set",
+      "type": "DWord",
+      "data": 3
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Internet Explorer\\Feeds",
+      "name": "DisableEnclosureDownload",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Internet Explorer\\Feeds",
+      "name": "AllowBasicAuthInClear",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+      "name": "AllowIndexingEncryptedStoresOrItems",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer",
+      "name": "EnableUserControl",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer",
+      "name": "AlwaysInstallElevated",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer",
+      "name": "SafeForScripting",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "name": "DisableAutomaticRestartSignOn",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "name": "LocalAccountTokenFilterPolicy",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "name": "InactivityTimeoutSecs",
+      "state": "set",
+      "type": "DWord",
+      "data": 900
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "name": "LegalNoticeText",
+      "state": "set",
+      "type": "String",
+      "data": "You are accessing a U.S. Government (USG) Information System (IS) that is provided for USG-authorized use only.\r\nBy using this IS (which includes any device attached to this IS), you consent to the following conditions:\r\n-The USG routinely intercepts and monitors communications on this IS for purposes including, but not limited to, penetration testing, COMSEC monitoring, network operations and defense, personnel misconduct (PM), law enforcement (LE), and counterintelligence (CI) investigations.\r\n-At any time, the USG may inspect and seize data stored on this IS.\r\n-Communications using, or data stored on, this IS are not private, are subject to routine monitoring, interception, and search, and may be disclosed or used for any USG-authorized purpose.\r\n-This IS includes security measures (e.g., authentication and access controls) to protect USG interests--not for your personal benefit or privacy.\r\n-Notwithstanding the above, using this IS does not constitute consent to PM, LE or CI investigative searching or monitoring of the content of privileged communications, or work product, related to personal representation or services by attorneys, psychotherapists, or clergy, and their assistants. Such communications and work product are private and confidential. See User Agreement for details."
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "name": "LegalNoticeCaption",
+      "state": "set",
+      "type": "String",
+      "data": "DoD Notice and Consent Banner"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "name": "FilterAdministratorToken",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "name": "EnableUIADesktopToggle",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "name": "ConsentPromptBehaviorAdmin",
+      "state": "set",
+      "type": "DWord",
+      "data": 2
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "name": "ConsentPromptBehaviorUser",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "name": "EnableInstallerDetection",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "name": "EnableSecureUIAPaths",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "name": "EnableLUA",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "name": "EnableVirtualization",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Kerberos\\Parameters",
+      "name": "SupportedEncryptionTypes",
+      "state": "set",
+      "type": "DWord",
+      "data": 2147483640
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging",
+      "name": "EnableScriptBlockLogging",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription",
+      "name": "EnableTranscripting",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription",
+      "name": "OutputDirectory",
+      "state": "set",
+      "type": "String",
+      "data": "\\\\logs01\\ps-transcripts$"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client",
+      "name": "AllowBasic",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client",
+      "name": "AllowUnencryptedTraffic",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client",
+      "name": "AllowDigest",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service",
+      "name": "AllowBasic",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service",
+      "name": "AllowUnencryptedTraffic",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service",
+      "name": "DisableRunAs",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters",
+      "name": "LDAPServerIntegrity",
+      "state": "set",
+      "type": "DWord",
+      "data": 2
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters",
+      "name": "DSA Database file",
+      "state": "set",
+      "type": "String",
+      "data": "C:\\Windows\\NTDS\\ntds.dit"
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters",
+      "name": "Database log files path",
+      "state": "set",
+      "type": "String",
+      "data": "C:\\Windows\\NTDS"
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+      "name": "RefusePasswordChange",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+      "name": "RequireSignOrSeal",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+      "name": "SealSecureChannel",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+      "name": "SignSecureChannel",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+      "name": "DisablePasswordChange",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+      "name": "MaximumPasswordAge",
+      "state": "set",
+      "type": "DWord",
+      "data": 30
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+      "name": "RequireStrongKey",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+      "name": "SysVol",
+      "state": "set",
+      "type": "String",
+      "data": "C:\\Windows\\SYSVOL\\sysvol"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Rpc",
+      "name": "RestrictRemoteClients",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+      "name": "CachedLogonsCount",
+      "state": "set",
+      "type": "String",
+      "data": "4"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+      "name": "scremoveoption",
+      "state": "set",
+      "type": "String",
+      "data": "1"
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+      "name": "RestrictRemoteSAM",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+      "name": "LimitBlankPasswordUse",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+      "name": "SCENoApplyLegacyAuditPolicy",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+      "name": "RestrictAnonymousSAM",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+      "name": "RestrictAnonymous",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+      "name": "EveryoneIncludesAnonymous",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+      "name": "UseMachineId",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+      "name": "NoLMHash",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+      "name": "LmCompatibilityLevel",
+      "state": "set",
+      "type": "DWord",
+      "data": 5
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\MSV1_0",
+      "name": "allownullsessionfallback",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\MSV1_0",
+      "name": "NTLMMinClientSec",
+      "state": "set",
+      "type": "DWord",
+      "data": 537395200
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\MSV1_0",
+      "name": "NTLMMinServerSec",
+      "state": "set",
+      "type": "DWord",
+      "data": 537395200
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\pku2u",
+      "name": "AllowOnlineID",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\FIPSAlgorithmPolicy",
+      "name": "Enabled",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\LDAP",
+      "name": "LDAPClientIntegrity",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters",
+      "name": "RequireSecuritySignature",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters",
+      "name": "EnableSecuritySignature",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters",
+      "name": "EnablePlainTextPassword",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+      "name": "RequireSecuritySignature",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+      "name": "EnableSecuritySignature",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+      "name": "RestrictNullSessAccess",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+      "name": "SMB1",
+      "state": "set",
+      "type": "DWord",
+      "data": 0
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\mrxsmb10",
+      "name": "Start",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Cryptography",
+      "name": "ForceKeyProtection",
+      "state": "set",
+      "type": "DWord",
+      "data": 2
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager",
+      "name": "ProtectionMode",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecureBoot\\State",
+      "name": "UEFISecureBootEnabled",
+      "state": "set",
+      "type": "DWord",
+      "data": 1
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\W32Time\\Parameters",
+      "name": "Type",
+      "state": "set",
+      "type": "String",
+      "data": "NT5DS"
+     },
+     {
+      "key": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\W32Time\\Parameters",
+      "name": "NtpServer",
+      "state": "set",
+      "type": "String",
+      "data": "time.windows.com,0x9"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\W32time\\Parameters",
+      "name": "Type",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\W32time\\Parameters",
+      "name": "NtpServer",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Policies\\LAPS",
+      "name": "BackupDirectory",
+      "state": "absent"
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+      "name": "BackupDirectory",
+      "state": "set",
+      "type": "DWord",
+      "data": 2
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+      "name": "PasswordComplexity",
+      "state": "set",
+      "type": "DWord",
+      "data": 4
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+      "name": "PasswordLength",
+      "state": "set",
+      "type": "DWord",
+      "data": 14
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+      "name": "PasswordAgeDays",
+      "state": "set",
+      "type": "DWord",
+      "data": 180
+     },
+     {
+      "key": "HKLM\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd",
+      "name": "AdmPwdEnabled",
+      "state": "absent"
+     },
+     {
+      "key": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Attachments",
+      "name": "SaveZoneInformation",
+      "state": "absent"
+     }
+    ]
+   },
+   "reason": null,
+   "command": "registry (read-only OpenBaseKey/OpenSubKey): the values listed in collect-windows.ps1 $RegistryValues; HKCU is the account running the collector"
+  },
+  "features": {
+   "status": "ok",
+   "value": {
+    "source": "Get-WindowsFeature",
+    "states": {
+     "Fax": "Available",
+     "Web-Ftp-Service": "Available",
+     "PNRP": "Available",
+     "Simple-TCPIP": "Available",
+     "Telnet-Client": "Available",
+     "TFTP-Client": "Available",
+     "FS-SMB1": "Removed",
+     "PowerShell-v2": "Removed",
+     "AD-Domain-Services": "Installed"
+    }
+   },
+   "reason": null,
+   "command": "Get-WindowsFeature -Name Fax,Web-Ftp-Service,PNRP,Simple-TCPIP,Telnet-Client,TFTP-Client,FS-SMB1,PowerShell-v2,AD-Domain-Services"
+  },
+  "services": {
+   "status": "ok",
+   "value": {
+    "WinDefend": {
+     "present": true,
+     "status": "Running",
+     "start_type": "Automatic"
+    },
+    "MpsSvc": {
+     "present": true,
+     "status": "Running",
+     "start_type": "Automatic"
+    },
+    "W32Time": {
+     "present": true,
+     "status": "Running",
+     "start_type": "Automatic"
+    },
+    "FTPSVC": {
+     "present": false
+    },
+    "SPTimerV4": {
+     "present": false
+    },
+    "MSExchangeServiceHost": {
+     "present": false
+    },
+    "NTDS": {
+     "present": true,
+     "status": "Running",
+     "start_type": "Automatic"
+    }
+   },
+   "reason": null,
+   "command": "Get-Service -Name WinDefend,MpsSvc,W32Time,FTPSVC,SPTimerV4,MSExchangeServiceHost,NTDS"
+  },
+  "local_accounts": {
+   "status": "ok",
+   "value": {
+    "accounts": []
+   },
+   "reason": null,
+   "command": "Get-CimInstance Win32_UserAccount -Filter \"LocalAccount=True\"; Get-LocalUser"
+  },
+  "local_admins": {
+   "status": "unavailable",
+   "value": null,
+   "reason": "Failed to compare two elements in the array.",
+   "command": "Get-LocalGroupMember -SID S-1-5-32-544"
+  },
+  "volumes": {
+   "status": "ok",
+   "value": {
+    "partition_types_read": true,
+    "volumes": [
+     {
+      "drive_letter": "C:",
+      "label": "",
+      "file_system": "NTFS",
+      "system_volume": false,
+      "boot_volume": true,
+      "capacity": 136365211648,
+      "partition_type": "Basic"
+     },
+     {
+      "drive_letter": "D:",
+      "label": "Data",
+      "file_system": "ReFS",
+      "system_volume": false,
+      "boot_volume": false,
+      "capacity": 536870912000,
+      "partition_type": "Basic"
+     },
+     {
+      "drive_letter": "",
+      "label": "",
+      "file_system": "FAT32",
+      "system_volume": true,
+      "boot_volume": false,
+      "capacity": 104857600,
+      "partition_type": "System"
+     },
+     {
+      "drive_letter": "",
+      "label": "",
+      "file_system": "NTFS",
+      "system_volume": false,
+      "boot_volume": false,
+      "capacity": 681570304,
+      "partition_type": "Recovery"
+     }
+    ]
+   },
+   "reason": null,
+   "command": "Get-CimInstance Win32_Volume -Filter \"DriveType=3\"; Get-Partition (partition types)"
+  },
+  "bitlocker": {
+   "status": "ok",
+   "value": {
+    "volumes": [
+     {
+      "mount_point": "C:",
+      "volume_type": "OperatingSystem",
+      "protection_status": "On",
+      "volume_status": "FullyEncrypted",
+      "encryption_percentage": 100
+     },
+     {
+      "mount_point": "D:",
+      "volume_type": "FixedData",
+      "protection_status": "On",
+      "volume_status": "FullyEncrypted",
+      "encryption_percentage": 100
+     }
+    ]
+   },
+   "reason": null,
+   "command": "Get-BitLockerVolume"
+  },
+  "tpm": {
+   "status": "ok",
+   "value": {
+    "present": true,
+    "ready": true,
+    "spec_version": "2.0, 0, 1.38"
+   },
+   "reason": null,
+   "command": "Get-Tpm; Get-CimInstance -Namespace root\\cimv2\\Security\\MicrosoftTpm Win32_Tpm (SpecVersion)"
+  },
+  "secure_boot": {
+   "status": "ok",
+   "value": {
+    "enabled": true
+   },
+   "reason": null,
+   "command": "Confirm-SecureBootUEFI"
+  },
+  "device_guard": {
+   "status": "ok",
+   "value": {
+    "vbs_status": 2,
+    "required_security_properties": [
+     1,
+     2
+    ],
+    "available_security_properties": [
+     1,
+     2,
+     3,
+     5
+    ],
+    "security_services_running": [
+     1,
+     2
+    ],
+    "security_services_configured": [
+     1,
+     2
+    ]
+   },
+   "reason": null,
+   "command": "Get-CimInstance -ClassName Win32_DeviceGuard -Namespace root\\Microsoft\\Windows\\DeviceGuard"
+  },
+  "defender": {
+   "status": "ok",
+   "value": {
+    "am_service_enabled": true,
+    "antivirus_enabled": true,
+    "realtime_protection_enabled": true,
+    "running_mode": "Normal"
+   },
+   "reason": null,
+   "command": "Get-MpComputerStatus"
+  },
+  "firewall": {
+   "status": "ok",
+   "value": {
+    "Domain": {
+     "enabled": true,
+     "enabled_raw": "True",
+     "default_inbound_action": "Block"
+    },
+    "Private": {
+     "enabled": true,
+     "enabled_raw": "True",
+     "default_inbound_action": "Block"
+    },
+    "Public": {
+     "enabled": true,
+     "enabled_raw": "True",
+     "default_inbound_action": "Block"
+    }
+   },
+   "reason": null,
+   "command": "Get-NetFirewallProfile -PolicyStore ActiveStore"
+  },
+  "smb_server": {
+   "status": "ok",
+   "value": {
+    "enable_smb1_protocol": false,
+    "require_security_signature": true
+   },
+   "reason": null,
+   "command": "Get-SmbServerConfiguration"
+  },
+  "certificates": {
+   "status": "ok",
+   "value": {
+    "root_dod": [
+     {
+      "subject": "CN=DoD Root CA 3, OU=PKI, OU=DoD, O=U.S. Government, C=US",
+      "issuer": "CN=DoD Root CA 3, OU=PKI, OU=DoD, O=U.S. Government, C=US",
+      "not_after": "2029-12-30T18:46:41Z",
+      "thumbprint": "D73CA91102A2204A36459ED32213B467D7CE97FB"
+     },
+     {
+      "subject": "CN=DoD Root CA 6, OU=PKI, OU=DoD, O=U.S. Government, C=US",
+      "issuer": "CN=DoD Root CA 6, OU=PKI, OU=DoD, O=U.S. Government, C=US",
+      "not_after": "2053-01-24T15:36:17Z",
+      "thumbprint": "D37ECF61C0B4ED88681EF3630C4E2FC787B37AEF"
+     }
+    ],
+    "disallowed_dod": [
+     {
+      "subject": "CN=DoD Root CA 3, OU=PKI, OU=DoD, O=U.S. Government, C=US",
+      "issuer": "CN=DoD Interoperability Root CA 2, OU=PKI, OU=DoD, O=U.S. Government, C=US",
+      "not_after": "2030-11-16T14:57:16Z",
+      "thumbprint": "49CBE933151872E17C8EAE7F0ABA97FB610F6477"
+     }
+    ],
+    "personal_count": 2
+   },
+   "reason": null,
+   "command": "Get-ChildItem Cert:\\LocalMachine\\Root, Cert:\\LocalMachine\\Disallowed (DoD subjects or issuers), Cert:\\LocalMachine\\My (count)"
+  },
+  "acls": {
+   "status": "ok",
+   "value": {
+    "log_application": {
+     "path": "C:\\Windows\\System32\\winevt\\Logs\\Application.evtx",
+     "exists": true,
+     "aces": [
+      {
+       "sid": "S-1-5-80-880578595-1860270145-482643319-2788375705-1540778122",
+       "type": "Allow",
+       "rights": 2032127,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-18",
+       "type": "Allow",
+       "rights": 2032127,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-32-544",
+       "type": "Allow",
+       "rights": 2032127,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      }
+     ]
+    },
+    "log_security": {
+     "path": "C:\\Windows\\System32\\winevt\\Logs\\Security.evtx",
+     "exists": true,
+     "aces": [
+      {
+       "sid": "S-1-5-80-880578595-1860270145-482643319-2788375705-1540778122",
+       "type": "Allow",
+       "rights": 2032127,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-18",
+       "type": "Allow",
+       "rights": 2032127,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-32-544",
+       "type": "Allow",
+       "rights": 2032127,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      }
+     ]
+    },
+    "log_system": {
+     "path": "C:\\Windows\\System32\\winevt\\Logs\\System.evtx",
+     "exists": true,
+     "aces": [
+      {
+       "sid": "S-1-5-80-880578595-1860270145-482643319-2788375705-1540778122",
+       "type": "Allow",
+       "rights": 2032127,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-18",
+       "type": "Allow",
+       "rights": 2032127,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-32-544",
+       "type": "Allow",
+       "rights": 2032127,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      }
+     ]
+    },
+    "eventvwr": {
+     "path": "C:\\Windows\\System32\\Eventvwr.exe",
+     "exists": true,
+     "aces": [
+      {
+       "sid": "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+       "type": "Allow",
+       "rights": 2032127,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-32-544",
+       "type": "Allow",
+       "rights": 1179817,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-18",
+       "type": "Allow",
+       "rights": 1179817,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-32-545",
+       "type": "Allow",
+       "rights": 1179817,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-15-2-1",
+       "type": "Allow",
+       "rights": 1179817,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-15-2-2",
+       "type": "Allow",
+       "rights": 1179817,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      }
+     ]
+    },
+    "ntds_dirs": [
+     "C:\\Windows\\NTDS"
+    ],
+    "ntds_files": [
+     {
+      "path": "C:\\Windows\\NTDS\\edb.chk",
+      "exists": true,
+      "aces": [
+       {
+        "sid": "S-1-5-18",
+        "type": "Allow",
+        "rights": 2032127,
+        "inherited": true,
+        "inheritance": 0,
+        "propagation": 0
+       },
+       {
+        "sid": "S-1-5-32-544",
+        "type": "Allow",
+        "rights": 2032127,
+        "inherited": true,
+        "inheritance": 0,
+        "propagation": 0
+       }
+      ]
+     },
+     {
+      "path": "C:\\Windows\\NTDS\\edb.log",
+      "exists": true,
+      "aces": [
+       {
+        "sid": "S-1-5-18",
+        "type": "Allow",
+        "rights": 2032127,
+        "inherited": true,
+        "inheritance": 0,
+        "propagation": 0
+       },
+       {
+        "sid": "S-1-5-32-544",
+        "type": "Allow",
+        "rights": 2032127,
+        "inherited": true,
+        "inheritance": 0,
+        "propagation": 0
+       }
+      ]
+     },
+     {
+      "path": "C:\\Windows\\NTDS\\ntds.dit",
+      "exists": true,
+      "aces": [
+       {
+        "sid": "S-1-5-18",
+        "type": "Allow",
+        "rights": 2032127,
+        "inherited": true,
+        "inheritance": 0,
+        "propagation": 0
+       },
+       {
+        "sid": "S-1-5-32-544",
+        "type": "Allow",
+        "rights": 2032127,
+        "inherited": true,
+        "inheritance": 0,
+        "propagation": 0
+       }
+      ]
+     },
+     {
+      "path": "C:\\Windows\\NTDS\\ntds.jfm",
+      "exists": true,
+      "aces": [
+       {
+        "sid": "S-1-5-18",
+        "type": "Allow",
+        "rights": 2032127,
+        "inherited": true,
+        "inheritance": 0,
+        "propagation": 0
+       },
+       {
+        "sid": "S-1-5-32-544",
+        "type": "Allow",
+        "rights": 2032127,
+        "inherited": true,
+        "inheritance": 0,
+        "propagation": 0
+       }
+      ]
+     }
+    ],
+    "sysvol": {
+     "path": "C:\\Windows\\SYSVOL",
+     "exists": true,
+     "aces": [
+      {
+       "sid": "S-1-5-11",
+       "type": "Allow",
+       "rights": 1179817,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-11",
+       "type": "Allow",
+       "rights": -1610612736,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-32-549",
+       "type": "Allow",
+       "rights": 1179817,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-32-549",
+       "type": "Allow",
+       "rights": -1610612736,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-32-544",
+       "type": "Allow",
+       "rights": 1900991,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-32-544",
+       "type": "Allow",
+       "rights": 268435456,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-18",
+       "type": "Allow",
+       "rights": 2032127,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-5-18",
+       "type": "Allow",
+       "rights": 268435456,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      },
+      {
+       "sid": "S-1-3-0",
+       "type": "Allow",
+       "rights": 268435456,
+       "inherited": false,
+       "inheritance": 0,
+       "propagation": 0
+      }
+     ]
+    }
+   },
+   "reason": null,
+   "command": "Get-WinEvent -ListLog Application,Security,System (LogFilePath); Get-Acl on the event log files, %SystemRoot%\\System32\\Eventvwr.exe and, on domain controllers, the NTDS files and the SYSVOL folder"
+  }
+ }
+}

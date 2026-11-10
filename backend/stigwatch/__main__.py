@@ -133,7 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
     b.set_defaults(func=_cmd_benchmarks)
 
     cp = sub.add_parser("collect-parse", help="validate a collector file and summarise its facts")
-    cp.add_argument("collector", choices=["linux"], help="collector type")
+    cp.add_argument("collector", choices=["linux", "windows"], help="collector type")
     cp.add_argument("file", help="collector JSON file")
     cp.add_argument("--min-ok", type=int, help="fail when fewer facts were read")
     cp.set_defaults(func=_cmd_collect_parse)

@@ -177,3 +177,101 @@ wrote .../win2.json: 63 facts, 18 unavailable (not run as root); utf8_bytes_drop
 ```
 
 The two skips are Linux-only (the full collector run and the permission-denied path test); they run in the new CI job. The collector has still not run on a real Ubuntu host; the CI artifacts will be the first real output.
+
+## Windows Server 2022 collector and checks (Task 4)
+
+### Engine (shared, no Windows special cases)
+
+- `CHECK_FILES` and `COLLECTORS` register `windows.yml` and `stigwatch/facts/windows.py`; `scan` detects the collector from the file, and `collect-parse` accepts `windows`.
+- New generic feature: a fact may carry `partial`, a mapping that follows its value's keys and gives the reason a part could not be read. The evidence then shows `unavailable: <reason>` instead of "not reported". Windows uses it for a registry value that was access-denied and for a user right granted to a name rather than a SID.
+- A Not_Applicable result names only the facts of `na_if` (context `observe` paths are no longer listed there).
+- `show_path` brackets segments containing a backslash, so registry keys read as `registry[HKLM\...].Name.value`.
+- The coverage headline separates checks that can decide a result from evidence/applicability-only checks: `254 of 277 rules automated (228 can decide a result, 26 evidence or applicability only), 23 manual review`.
+- Windows-specific operators live in `facts/windows.py`: `has_sid` (a user right lists a SID or a pattern such as `S-1-5-21-*-512`), `acl` (Allow entries no wider than full control for named SIDs and read & execute for others; a "standard" list says which wider grants are findings and which need review) and `dod_banner` (the Linux banner comparison).
+
+### Collector (`collectors/collect-windows.ps1`)
+
+- Ported from CMMC Ready's collector: per-fact try/catch, `secedit /export` to a temp file deleted in `finally`, auditpol keyed by subcategory GUID, registry reads through `OpenBaseKey`/`OpenSubKey($key, $false)`, `-RedactNames`, UTF-8 without BOM, PowerShell 5.1 and 7. 20 facts; each records the exact command. Envelope: `{"collector":"windows","version":1,"collected_at","host":{name,os,build},"privileged","redacted","powershell","facts":{...}}`.
+- secedit uses `/mergedpolicy` so domain policy merged into the local database is exported (account, lockout and Kerberos policy, security options, user rights). A secedit exit 740 is reported as "requires elevation".
+- **Audit policy, locale independence.** `auditpol /backup /file:<temp>` writes a numeric "Setting Value" (0 none, 1 success, 2 failure, 3 both) that does not depend on the display language; the collector uses it first. If it fails, `auditpol /get /category:* /r` is used and the parser interprets only the English inclusion texts ("No Auditing", "Success", "Failure", "Success and Failure"). Any other text makes the whole `audit_policy` fact unavailable ("not English"), so every audit rule is Not_Reviewed. The subcategory GUIDs were confirmed with `auditpol /list /subcategory:* /v` on the development machine.
+- **Registry.** One fact holds every value the checks read (the `$RegistryValues` table). Each value is `set` (with its type), `absent` (key or value missing: "not configured") or `error` (unreadable: unknown). REG_DWORD data is normalised to unsigned. A value of the wrong type (REG_SZ "1" where the check text asks for REG_DWORD 1) is never treated as compliant: the comparison is unknown, so the rule is Not_Reviewed. A test checks that every registry value the checks use is in the collector's table.
+- **User rights** are SIDs from `[Privilege Rights]`. secedit omits a right nobody holds, so every known right defaults to an empty list, but only when the section lists at least one known right (otherwise the fact is unavailable). A right granted to a name instead of a `*SID` is left unknown. Domain Admins and Enterprise Admins are matched as `S-1-5-21-*-512` and `S-1-5-21-*-519`: a local SAM never has those RIDs, and -519 exists only in the forest root domain.
+- **Domain role** is `Win32_ComputerSystem.DomainRole`: 0/2 standalone, 1/3 member, 4/5 domain controller. It is the `na_if` fact for every DC-only rule (Not_Applicable on member and standalone servers) and every member-only rule (Not_Applicable on domain controllers; MS-000020/030/050 also on standalone systems, as their check texts say).
+- **Features** come from `Get-WindowsFeature`; on a system without it, from `Get-WindowsOptionalFeature -Online` with a fixed name map (TelnetClient, TFTP, SimpleTCP, SMB1Protocol, MicrosoftWindowsPowerShellV2Root, IIS-FTPSvc; Fax and PNRP have no optional-feature equivalent and stay unknown). `Installed` is a finding, `Available`/`Removed` are not, pending states are Not_Reviewed.
+- **Volumes**: `Win32_Volume` (DriveType 3) with partition types from `Get-Partition`. System (EFI), Recovery and Reserved partitions are excluded as the check text allows. Without partition types only an unlettered system volume is excluded, and any other unlettered non-NTFS volume is unverified (Not_Reviewed). NTFS, ReFS and CSVFS pass; a lettered FAT/exFAT volume is Open.
+- **File permissions** (`Get-Acl`, SIDs only): the Application, Security and System event logs (path from `Get-WinEvent -ListLog`, registry fallback), Eventvwr.exe, and on domain controllers the files in the NTDS database and log folders (from the NTDS registry values; files are listed, never opened) and the SYSVOL folder (the parent of the Netlogon `SysVol` value, the "first SYSVOL directory level").
+- **Firmware**: UEFI mode is `$env:firmware_type` (what System Information shows as BIOS Mode); Secure Boot is `Confirm-SecureBootUEFI`, as in the check text.
+- **Local run** (development machine, Windows 11, not elevated, Windows PowerShell 5.1): completed in about 10 s with 13 of 20 facts read. Unavailable: security_policy and user_rights (secedit exit 740), audit_policy (0x522, privilege not held), features (requires elevation), bitlocker (access denied), tpm, secure_boot. No `stigwatch-*` temporary file was left in `%TEMP%`. The output was not committed. PowerShell 7 is not installed locally; the CI job runs it.
+
+### Interpretations of the Windows Server 2022 V2R11 check texts
+
+- **Documented exceptions** are not visible on the host, so the result is Open and the rationale says so, as for Ubuntu. Examples: "If an application requires this user right ... documented with the ISSO", an external password filter, a documented FTP server role, smart card removal exceptions, and event logs written straight to an audit server.
+- **Partial checks** (one decisive outcome, Not_Reviewed otherwise):
+  - 00-000110 antivirus and 00-000280 firewall: Defender / Windows Firewall prove compliance; their absence may mean a third-party product.
+  - 00-000190 and 00-000210: the check text excludes application accounts, which cannot be identified.
+  - AU-000240/250 removable storage: VM and NAS systems may leave it not configured.
+  - CC-000280 Security log size: a missing value is a finding, but "one week of records" depends on the environment.
+  - CC-000300 SmartScreen: applies to unclassified systems only.
+  - CC-000530 PowerShell transcription: the output folder permissions are not collected.
+  - DC-000280: an empty LocalMachine\My store is a finding; otherwise review.
+  - UC-000010: only the collector account's HKCU is read, so a value of 1 is a finding but a compliant value does not cover other profiles.
+  - UR-000170: an Auditors group may also hold the right.
+- **Evidence or applicability only** (Not_Applicable when the domain role proves it, otherwise Not_Reviewed with the facts shown):
+  - DC-000010 and MS-000010: who may administer the system is a judgement; members are listed.
+  - DC-000090 to 000220, 000290 to 000310, 000406 and 000430: Active Directory objects, auditing, mappings and PKI judgements, or an LDAP bind the read-only collector does not make.
+  - 00-000420/430: the IIS FTP configuration is not collected; Not_Applicable when the FTP service is not installed.
+  - PK-000010 to 000030: DoD certificate presence is supporting evidence only.
+- **Absent values the check text accepts**: CC-000130 (not set, 1, 3 or 8; 7 is a finding; other values need review) and CC-000310/320/330/400/440 (not set or 0; 1 is a finding).
+- **AC-000010 / AC-000030**: secedit omits LockoutDuration and ResetLockoutCount when there is no lockout threshold. That is Not_Reviewed here (AC-000020 reports the threshold). A LockoutDuration of 0 or -1 (until an administrator unlocks) is not a finding.
+- **AC-000050**: MaximumPasswordAge must be 1 to 180; 0 and -1 (never expires) are findings.
+- **SO-000320**: LDAPClientIntegrity 1 is not a finding, missing or 0 is. 2 (require signing) is stricter than the check text's value and is Not_Reviewed.
+- **SO-000360** is Not_Applicable when the SharePoint Timer service (SPTimerV4) is running. **MS-000140** is Not_Applicable when MSExchangeServiceHost is present (an Exchange server), as well as on domain controllers and standalone systems.
+- **SO-000380 to 000450 and AU-000060** are Not_Applicable on Server Core (`InstallationType` "Server Core").
+- **00-000020**: Not_Applicable when the built-in Administrator (RID 500) is disabled on a non-DC; Open when its password is older than 180 days; NotAFinding only on standalone systems (on domain members the LAPS portion needs review; the LAPS policy values are shown).
+- **00-000100**: Not a finding on Windows Server 2022 (build 20348) collected on or before 10/15/2031, the Extended Support end the check text gives; any other OS is Not_Reviewed.
+- **00-000440**: domain members must use NT5DS (the W32Time policy value wins over the service value). Standalone systems and domain controllers need a DoD time source, which is Not_Reviewed.
+- **DC Kerberos rules (DC-000020 to 000060)** read the effective Kerberos policy that secedit exports on the domain controller. The check text names the Default Domain Policy; account policies take effect only from domain-level GPOs, so the effective value is the one in force.
+- **MS-000080 to 000120**: Guests is required on all systems. Enterprise Admins and Domain Admins (and Local account where the rule names it) are required on domain-joined members only. MS-000100 must be empty on standalone systems.
+
+### Not automated (23, Manual review)
+
+- 00-000010, 040, 050, 060 and 070: account practices.
+- 00-000030: CAT I, see below.
+- 00-000080: application allow-listing policy.
+- 00-000120: HIDS/HIPS product.
+- 00-000140, 150, 160 and 170: folder and registry permissions compared with defaults, with inheritance and "applies to" semantics (deferred).
+- 00-000180: printer share permissions.
+- 00-000220: file integrity monitoring process.
+- 00-000230: share permissions need judgement.
+- 00-000240: searching every drive for .p12/.pfx is too slow, and the exceptions need judgement.
+- 00-000260 and 00-000270: documentation.
+- 00-000300 and 00-000310: temporary and emergency accounts cannot be identified.
+- 00-000450: orphaned SIDs need SID resolution against the domain.
+- AU-000010 and AU-000020: processes.
+
+### CAT I
+
+- **Decided from host facts (22):** 00-000130, 00-000250, AC-000090, CC-000210/220/230/430/470/500, DC-000070, DC-000080, MS-000140, SO-000020/210/220/230/250/300/310 and UR-000020/060/100.
+- **Evidence or applicability only (8):**
+  - DC-000010 and MS-000010: who is "responsible for administration" is a judgement; members are listed.
+  - DC-000090, 000100 and 000110: Active Directory object permissions, not host facts.
+  - DC-000150: needs an anonymous LDAP bind, an active test.
+  - DC-000290 and DC-000300: DoD PKI / ECA issuer and UPN mapping judgements.
+  
+  On member and standalone servers the six DC rules among them are Not_Applicable from the domain role.
+- **Not host-checkable (1): WN22-00-000030.** It requires an organisational policy that keeps administrative accounts away from internet-facing applications, with technical enforcement "except as approved by the AO". AppLocker rules could be collected as evidence but cannot show the policy or the approvals.
+
+### Fixtures and tests
+
+- Synthetic fixtures `backend/tests/fixtures/windows-*.json` (member-compliant, noncompliant, unprivileged, dc, standalone, non-english) are generated by `backend/scripts/make_windows_fixtures.py`, which reads the registry list from the collector script. The tests run its `--check` mode.
+- `tests/test_windows_checks.py` covers the Task 3 test set for Windows: `test_unreadable_facts_not_reviewed`, `test_not_applicable_requires_fact`, every STIG ID in the benchmark, coverage with the CAT I list, and a static no-write test of the collector. It adds tests for non-English auditpol, registry types, the ACL and SID operators, volumes, Kerberos and the CLI.
+- `test_collector_runs_on_windows` runs the real collector when `STIGWATCH_RUN_COLLECTOR=1` on Windows.
+
+### CI
+
+- A new `windows-collector` job runs on `windows-2022` (elevated by default):
+  - the collector tests under Windows PowerShell 5.1;
+  - the collector under `pwsh` and under `powershell`, in separate steps, each native exit code checked;
+  - `collect-parse windows --min-ok 15` and `scan` for each output;
+  - both outputs uploaded as the `windows-collector-output` artifact.
+- The `frontend` job is gated per step with `if: hashFiles('package.json') != ''` (`hashFiles()` is not available in a job-level `if`), so it passes as a no-op until Task 9 adds the dashboard.

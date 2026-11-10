@@ -1,7 +1,7 @@
 """Declarative STIG check engine over collector facts.
 
-The engine is collector-agnostic. A collector module (``stigwatch.facts.linux`` and,
-later, ``stigwatch.facts.windows``) turns raw collector JSON into facts:
+The engine is collector-agnostic. A collector module (``stigwatch.facts.linux``,
+``stigwatch.facts.windows``) turns raw collector JSON into facts:
 ``{fact_id: {"status": "ok"|"unavailable", "value": <normalised>, "reason", "command"}}``.
 A checks file (``checks/<collector>.yml``) maps STIG IDs to conditions over those facts.
 
@@ -40,6 +40,7 @@ import yaml
 from ..benchmarks import Benchmark, load_benchmark
 from ..facts import Operator
 from ..facts import linux as linux_facts
+from ..facts import windows as windows_facts
 
 OPEN = "Open"
 NOT_A_FINDING = "NotAFinding"
@@ -51,8 +52,10 @@ CHECKS_DIR = Path(__file__).resolve().parent
 # Benchmark id -> checks file. The file names its collector.
 CHECK_FILES: dict[str, Path] = {
     "ubuntu-22.04": CHECKS_DIR / "linux.yml",
+    "windows-server-2022": CHECKS_DIR / "windows.yml",
 }
-COLLECTORS: dict[str, Any] = {linux_facts.COLLECTOR: linux_facts}
+COLLECTORS: dict[str, Any] = {linux_facts.COLLECTOR: linux_facts,
+                              windows_facts.COLLECTOR: windows_facts}
 
 _BUILTIN_OPS = {
     "eq", "ne", "ge", "le", "gt", "lt", "in", "not_in", "subset", "contains",
@@ -131,7 +134,7 @@ def _parse_path(raw: Any, where: str = "path") -> tuple[str, ...]:
 def show_path(path: tuple[str, ...]) -> str:
     out = path[0]
     for t in path[1:]:
-        out += f"[{t}]" if ("." in t or " " in t or "/" in t) else f".{t}"
+        out += f"[{t}]" if any(c in t for c in "./\\ ") else f".{t}"
     return out
 
 
@@ -403,6 +406,21 @@ def describe(cond: dict, ops: dict[str, Operator] | None = None) -> str:
     return _describe_leaf(cond, ops)
 
 
+def _partial_reason(fact: dict, path: tuple[str, ...]) -> str | None:
+    """The reason a part of a readable fact could not be read, if the fact records one.
+
+    A fact may carry ``partial``: a nested mapping, following the value's keys, whose
+    string leaves explain why that part of the value is missing."""
+    node: Any = fact.get("partial")
+    for token in path[1:]:
+        if isinstance(node, str):
+            return node
+        if not isinstance(node, dict) or token not in node:
+            return None
+        node = node[token]
+    return node if isinstance(node, str) else None
+
+
 def _observed(facts: dict, values: dict, path: tuple[str, ...], leaves: list[dict],
               ops: dict[str, Operator]) -> Any:
     fact = facts.get(path[0])
@@ -412,7 +430,8 @@ def _observed(facts: dict, values: dict, path: tuple[str, ...], leaves: list[dic
         return f"unavailable: {fact.get('reason') or 'no reason given'}"
     found, got, _ = _resolve(values, path)
     if not found:
-        return "not reported"
+        reason = _partial_reason(fact, path)
+        return f"unavailable: {reason}" if reason else "not reported"
     for leaf in leaves:
         for op in _ops_of(leaf):
             if op in ops and ops[op].observe is not None:
@@ -421,12 +440,12 @@ def _observed(facts: dict, values: dict, path: tuple[str, ...], leaves: list[dic
 
 
 def _evidence(check: Check, facts: dict, values: dict, conds: list[dict | None],
-              ops: dict[str, Operator]) -> tuple[dict, ...]:
+              ops: dict[str, Operator], context: bool = True) -> tuple[dict, ...]:
     by_path: dict[tuple[str, ...], list[dict]] = {}
     for cond in conds:
         for leaf in _leaves(cond):
             by_path.setdefault(_parse_path(leaf["path"]), []).append(leaf)
-    for p in check.observe:
+    for p in check.observe if context else ():
         by_path.setdefault(p, [])
     out = []
     for path, leaves in by_path.items():
@@ -477,7 +496,8 @@ def evaluate_check(check: Check, facts: dict, ops: dict[str, Operator] | None = 
     conds = [check.na_if, check.logic, check.unmet_if]
     not_applicable = False if check.na_if is None else _eval(check.na_if, values, ops)
     if not_applicable is True:
-        ev = _evidence(check, facts, values, [check.na_if], ops)
+        # Only the facts that prove non-applicability (not the context paths) are named.
+        ev = _evidence(check, facts, values, [check.na_if], ops, context=False)
         return RuleResult(check.stig_id, NOT_APPLICABLE, ev,
                           f"Not applicable: {describe(check.na_if, ops)} "
                           f"(fact: {', '.join(sorted({e['fact'] for e in ev}))}; "
@@ -604,16 +624,19 @@ def coverage(benchmark_id: str) -> Coverage:
 def coverage_lines(benchmark_id: str) -> list[str]:
     cov = coverage(benchmark_id)
     total = sum(r["total"] for r in cov.by_cat.values())
+    decisive = sum(1 for _, _, kind in cov.automated if kind != "evidence")
     lines = [
-        f"{cov.benchmark_id} {cov.label}: {len(cov.automated)} of {total} rules automated, "
-        f"{len(cov.manual)} manual review",
+        f"{cov.benchmark_id} {cov.label}: {len(cov.automated)} of {total} rules automated "
+        f"({decisive} can decide a result, {len(cov.automated) - decisive} evidence or "
+        f"applicability only), {len(cov.manual)} manual review",
         f"{'':9}{'rules':>6}{'automated':>11}{'full':>6}{'partial':>9}{'evidence':>10}{'manual':>8}",
     ]
     for cat, row in cov.by_cat.items():
         lines.append(f"{cat:9}{row['total']:>6}{row['automated']:>11}{row['full']:>6}"
                      f"{row['partial']:>9}{row['evidence']:>10}{row['manual']:>8}")
     lines.append("full = can return Open and NotAFinding; partial = one of them "
-                 "(the other outcome is Not_Reviewed)")
+                 "(the other outcome is Not_Reviewed); evidence = neither (Not_Applicable "
+                 "when a fact proves it, otherwise Not_Reviewed with the facts shown)")
     cat1 = [f"{s} ({k})" for s, c, k in cov.automated if c == "CAT I"]
     lines.append("CAT I automated: " + ", ".join(cat1))
     cat1_manual = [s for s, c in cov.manual if c == "CAT I"]

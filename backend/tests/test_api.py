@@ -509,6 +509,14 @@ def test_scan_objects_expose_privileged(client):
     assert client.get(f"/api/hosts/{hid}").json()["latest_scan"]["privileged"] is False
     res = client.get(f"/api/scans/{r['scan_id']}/results").json()
     assert res["scan"]["privileged"] is True
-    # missing / null / non-boolean flag -> False, never an error
-    nulled = {**priv, "collected_at": "2026-11-10T01:00:00Z", "privileged": None}
-    assert upload(client, nulled).json()["privileged"] is False
+    # unknown is not "not privileged": missing, null and non-boolean values give null
+    unknown = {k: v for k, v in priv.items() if k != "privileged"}
+    assert upload(client, {**unknown, "collected_at": "2026-11-10T01:00:00Z"}).json()["privileged"] is None
+    r3 = upload(client, {**priv, "collected_at": "2026-11-10T02:00:00Z", "privileged": None})
+    assert r3.json()["privileged"] is None
+    r4 = upload(client, {**priv, "collected_at": "2026-11-10T03:00:00Z", "privileged": "yes"})
+    assert r4.status_code == 400                         # the collector envelope check refuses it
+    shown = {s["id"]: s["privileged"] for s in client.get(f"/api/hosts/{hid}/scans").json()}
+    assert shown[r["scan_id"]] is True and shown[r2["scan_id"]] is False and shown[r3.json()["scan_id"]] is None
+    assert client.get(f"/api/hosts/{hid}").json()["latest_scan"]["privileged"] is None
+    assert client.get(f"/api/scans/{r3.json()['scan_id']}/results").json()["scan"]["privileged"] is None

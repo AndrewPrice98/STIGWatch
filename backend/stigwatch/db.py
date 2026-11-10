@@ -233,15 +233,17 @@ def add_scan(conn: sqlite3.Connection, host_id: int, collector_json: dict,
     return scan_id
 
 
-# ``privileged`` is the collector's own statement that it ran as root / Administrator
-# (top-level ``privileged`` in the stored collector JSON); missing or null counts as False.
+# ``privileged`` is the collector's own statement that it ran as root / Administrator (top-level
+# ``privileged`` in the stored collector JSON): True or False only when that is a JSON boolean,
+# None when it is missing, null or anything else (unknown is not the same as not privileged).
 _SCAN_COLUMNS = ("id, host_id, benchmark_id, benchmark_release, collected_at, uploaded_at, "
-                 "COALESCE(json_extract(raw_json, '$.privileged') = 1, 0) AS privileged")
+                 "CASE json_type(raw_json, '$.privileged') WHEN 'true' THEN 1 WHEN 'false' THEN 0 "
+                 "ELSE NULL END AS privileged")
 
 
 def _scan_dict(row: sqlite3.Row) -> dict:
     out = dict(row)
-    out["privileged"] = bool(out["privileged"])
+    out["privileged"] = None if out["privileged"] is None else bool(out["privileged"])
     return out
 
 

@@ -688,7 +688,7 @@ def _ingest(conn: sqlite3.Connection, parsed: Any, host: dict | None) -> dict:
     n_alerts = conn.execute("SELECT COUNT(*) FROM alerts WHERE scan_id = ?", (scan_id,)).fetchone()[0]
     return {"scan_id": scan_id, "host_id": host_id, "host": name, "host_created": created,
             "collected_at": when, "benchmark": bench.benchmark_id, "release": bench.label,
-            "privileged": raw.get("privileged") is True, "out_of_order": out_of_order, "alerts_recomputed_for_scan": recomputed,
+            "privileged": raw["privileged"] if isinstance(raw.get("privileged"), bool) else None, "out_of_order": out_of_order, "alerts_recomputed_for_scan": recomputed,
             "alerts_raised": n_alerts, **_counts(conn, scan_id), "drift": _drift_out(conn, scan_id)}
 
 

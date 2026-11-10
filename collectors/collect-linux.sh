@@ -6,7 +6,8 @@
 #
 # Read-only. The script changes no setting, starts or stops nothing and writes nothing
 # except the output file and a private temporary directory (mktemp -d) that is removed on
-# exit. It never outputs password hashes: /etc/shadow and grub.cfg yield counts only.
+# exit. It never outputs password hashes: /etc/shadow and grub.cfg yield counts only (the
+# only digests it reports are SHA-1/MD5 of the AIDE cron scripts, which are not secrets).
 # Every fact records the command that produced it. A fact that cannot be read (for example
 # /etc/shadow without root, or auditctl not installed) is recorded as "unavailable" with
 # the reason, and STIGWatch reports the rules that depend on it as Not Reviewed.
@@ -156,7 +157,13 @@ ok() { emit "$1" ok "$TMP/val" "" "$2"; }                                  # ID 
 unavail() { NUNAVAIL=$((NUNAVAIL + 1)); emit "$1" unavailable "" "$3" "$2"; }  # ID COMMAND REASON
 
 # keep active lines: drop blank lines and lines starting with #
-active() { grep -v -E '^[[:space:]]*(#|$)' || true; }
+# (with KEEP_INCLUDE=1, sudoers' "#include" and "#includedir" directives are kept)
+active() {
+    awk -v k="${KEEP_INCLUDE:-0}" '
+        /^[[:space:]]*$/ { next }
+        /^[[:space:]]*#/ { if (k == 1 && $0 ~ /^[[:space:]]*#include/) print; next }
+        { print }'
+}
 
 # path_state PATH -> present | absent | denied. A path inside a directory we may not
 # search looks absent to "test -e"; ls tells the two apart, so an unreadable location is
@@ -335,10 +342,10 @@ collect_packages() {
 UNITS="ssh.service auditd.service apparmor.service rsyslog.service ufw.service kdump-tools.service ctrl-alt-del.target sssd.service chrony.service"
 
 collect_units() {
-    cmd="systemctl show -p Id -p LoadState -p ActiveState -p UnitFileState $UNITS"
+    cmd="systemctl show -p Id -p Names -p LoadState -p ActiveState -p UnitFileState $UNITS"
     if ! have systemctl; then unavail units "$cmd" "systemctl not found"; return; fi
     # shellcheck disable=SC2086
-    if ! run systemctl show -p Id -p LoadState -p ActiveState -p UnitFileState $UNITS; then
+    if ! run systemctl show -p Id -p Names -p LoadState -p ActiveState -p UnitFileState $UNITS; then
         unavail units "$cmd" "$(err_line)"
         return
     fi
@@ -366,7 +373,9 @@ collect_ssh() {
         if [ -z "$banner" ]; then
             printf '{"path": null, "exists": false, "text": null}' > "$TMP/val"
             ok ssh_banner "no Banner directive in the sshd configuration"
-        elif [ ! -e "$banner" ]; then
+        elif [ "$(path_state "$banner")" = denied ]; then
+            unavail ssh_banner "cat $banner" "cannot read $banner (permission denied)"
+        elif [ "$(path_state "$banner")" = absent ]; then
             { printf '{"path": '; jstr_s "$banner"; printf ', "exists": false, "text": null}'; } > "$TMP/val"
             ok ssh_banner "cat $banner"
         elif cat "$banner" > "$TMP/raw" 2> "$TMP/err"; then
@@ -532,12 +541,15 @@ collect_users() {
     fi
 
     cmd="grep -iwE 'NOPASSWD|!authenticate|ALL' /etc/sudoers /etc/sudoers.d/*"
+    KEEP_INCLUDE=1
     if ! dir_ok /etc/sudoers.d; then
         unavail sudoers "$cmd" "$REASON"
     elif lines_value '' /etc/sudoers /etc/sudoers.d/*; then
-        # keep the matching lines; with -r replace the user or group field
+        # keep the matching lines and the include directives (#include is not a comment in
+        # sudoers); with -r replace the user or group field
         awk -F'\t' -v r="$REDACT" '
             { line = $2 }
+            line ~ /^[[:space:]]*[@#]include/ { print $1 "\t" line; next }
             tolower(line) ~ /nopasswd|!authenticate/ || line ~ /(^|[^A-Za-z0-9_])ALL([^A-Za-z0-9_]|$)/ {
                 if (r == 1) {
                     split(line, w, /[[:space:]]+/)
@@ -553,6 +565,7 @@ collect_users() {
     else
         unavail sudoers "$cmd" "$REASON"
     fi
+    KEEP_INCLUDE=0
 }
 
 collect_audit() {
@@ -669,8 +682,10 @@ collect_paths() {
         printf '{"complete": true, "count": 0, "sample": "", "error": null}' > "$TMP/val"
         ok journal_entries "$cmd"
     else
+        FIND_SAMPLE=5000
         # shellcheck disable=SC2086
-        FIND_SAMPLE=5000 find_fact journal_entries "$cmd" $JOURNAL_DIRS -printf '%m\t%u\t%g\t%y\t%p\n'
+        find_fact journal_entries "$cmd" $JOURNAL_DIRS -printf '%m\t%u\t%g\t%y\t%p\n'
+        FIND_SAMPLE=50
     fi
 }
 
@@ -824,6 +839,29 @@ collect_hardware() {
     file_fact crypttab /etc/crypttab
 }
 
+# write_output: $TMP/result.json -> $OUT. Drops any bytes that are not valid UTF-8 so
+# the file is always valid JSON text. iconv -c exits 1 when it dropped something, so the
+# cleaned output is used whenever it is non-empty, and the envelope's utf8_bytes_dropped
+# placeholder becomes true, false, or null when iconv is missing.
+write_output() {
+    DROPPED=null
+    cat "$TMP/result.json" > "$TMP/final.json"
+    if have iconv; then
+        iconv -c -f UTF-8 -t UTF-8 < "$TMP/result.json" > "$TMP/clean.json" 2>/dev/null
+        if [ -s "$TMP/clean.json" ]; then
+            DROPPED=false
+            if [ "$(wc -c < "$TMP/clean.json")" -ne "$(wc -c < "$TMP/result.json")" ]; then DROPPED=true; fi
+            cat "$TMP/clean.json" > "$TMP/final.json"
+        fi
+    fi
+    if ! awk -v d="$DROPPED" '!done && $0 == "  \"utf8_bytes_dropped\": UTF8_PLACEHOLDER," {
+            print "  \"utf8_bytes_dropped\": " d ","; done = 1; next } { print }' \
+            "$TMP/final.json" > "$OUT"; then
+        echo "error: cannot write $OUT" >&2
+        return 1
+    fi
+}
+
 # --------------------------------------------------------------------------- run
 
 collect_release
@@ -854,6 +892,7 @@ RED=false
 {
     printf '{\n  "collector": "linux",\n  "version": 1,\n  "collected_at": "%s",\n' "$NOW"
     printf '  "privileged": %s,\n  "redacted": %s,\n  "escaper": "%s",\n' "$PRIV" "$RED" "$ESCAPER"
+    printf '  "utf8_bytes_dropped": UTF8_PLACEHOLDER,\n'
     printf '  "host": {"name": '; jstr_s "$HOST"
     printf ', "os_release": '; jstr_s "$PRETTY"
     printf ', "kernel": '; jstr_s "$KERNEL"
@@ -863,11 +902,6 @@ RED=false
     printf '\n  }\n}\n'
 } > "$TMP/result.json"
 
-# Drop any bytes that are not valid UTF-8 so the file is always valid JSON text.
-if have iconv && iconv -c -f UTF-8 -t UTF-8 < "$TMP/result.json" > "$TMP/clean.json" 2>/dev/null; then
-    cat "$TMP/clean.json" > "$OUT" || { echo "error: cannot write $OUT" >&2; exit 1; }
-else
-    cat "$TMP/result.json" > "$OUT" || { echo "error: cannot write $OUT" >&2; exit 1; }
-fi
+write_output || exit 1
 
 echo "wrote $OUT: $NFACT facts, $NUNAVAIL unavailable$( [ "$IS_ROOT" -eq 1 ] || printf ' (not run as root)')" >&2

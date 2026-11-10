@@ -100,8 +100,8 @@ Source: the published sample https://raw.githubusercontent.com/NUWCDIVNPT/stig-m
 
 - **Documented exceptions.** Where the check text excuses a setting "if documented with the ISSO" (X11Forwarding, NOPASSWD, kdump-tools, wireless, nfs-kernel-server, disk encryption), the host cannot show the documentation, so the result is Open and the rationale says so; the assessor records the exception.
 - **Judgements the host cannot make** give partial checks (one decisive outcome, Not_Reviewed otherwise): UBTU-22-432015 sudo group membership (an empty group is NotAFinding, otherwise the members are listed for review); UBTU-22-211000 vendor support (see below); UBTU-22-252010 authoritative DoD time source; UBTU-22-653020 remote audit server; UBTU-22-653025 the ISSO's mail address; UBTU-22-651010 and UBTU-22-251010 ("ask the administrator about another tool"); UBTU-22-232045, 232050 and 232055 ("required system account" owners).
-- **sshd settings** are read from `/etc/ssh/sshd_config` and `/etc/ssh/sshd_config.d/*.conf`, as the check texts grep the files sshd parses; `sshd -T` is collected as supporting evidence only. A directive inside a `Match` block counts towards conflicting results. Include directives pointing elsewhere are not followed.
-- **UBTU-22-611060** looks for `nullok` on active lines only (the check's plain grep would also match a commented-out line).
+- **sshd settings** are read from `/etc/ssh/sshd_config` and `/etc/ssh/sshd_config.d/*.conf`, as the check texts grep the files sshd parses; `sshd -T` is collected as supporting evidence only. A directive inside a `Match` block counts towards conflicting results. An `Include` of anything other than files matching `/etc/ssh/sshd_config.d/*.conf` (relative paths resolve in /etc/ssh) makes the whole sshd configuration unknown, so the SSH rules are Not_Reviewed.
+- **UBTU-22-611060** counts every active (not commented-out) line of common-auth and common-password that contains `nullok`, whatever the case of the PAM type or whether the line parses, as the check text's grep does; only commented-out lines are excluded.
 - **UBTU-22-215025** checks the package named `ntp`, not every package whose name contains "ntp" (`dpkg -l | grep ntp` would also match ntpsec, ntpdate and others).
 - **UBTU-22-411030**: the check text calls PASS_MAX_DAYS "less than 180" a finding while the title requires a 180-day maximum. Only 180 satisfies both readings (NotAFinding); missing is Open; any other value is Not_Reviewed.
 - **UBTU-22-411035** requires INACTIVE 35. -1, missing or longer is Open; a shorter period (which the check text also flags) is Not_Reviewed.
@@ -123,8 +123,57 @@ Source: the published sample https://raw.githubusercontent.com/NUWCDIVNPT/stig-m
 
 - POSIX sh: `#!/bin/sh`, `set -u`, `LC_ALL=C`, no bashisms (dash is the target; CI runs it with Ubuntu's `/bin/sh`). JSON strings are escaped by an awk function, character by character (quote, backslash, tab, CR, other control characters as `\uXXXX`; NUL removed); the finished file passes through `iconv -c` to drop invalid UTF-8. awk is POSIX and mawk is part of every Ubuntu install, so python3 is only a fallback when awk is missing.
 - Read-only: it writes only its output file and a `mktemp -d` directory removed by an EXIT trap. Every fact records the command it ran. `auditctl` is only called with `-l` and `-s`, `systemctl` only with `show`, `passwd` only with `-S root`, `gsettings` only with `get`. A static test scans the script for redirects outside the temp directory and output file and for state-changing commands; a mutation check confirmed it catches chmod, sed -i, systemctl stop, auditctl -D, passwd -l, rm and redirects into /etc.
-- Never outputs secrets: /etc/shadow yields two counts (accounts, empty password fields); grub.cfg yields counts of password_pbkdf2, password, superusers, linux and audit=1 lines, never the hash. /etc/passwd yields name, UID, GID and shell only (no GECOS or home directory).
+- Never outputs password hashes: /etc/shadow yields two counts (accounts, empty password fields); grub.cfg yields counts of password_pbkdf2, password, superusers, linux and audit=1 lines, never the hash. /etc/passwd yields name, UID, GID and shell only (no GECOS or home directory). The only digests in the output are the SHA-1 and MD5 checksums of the AIDE cron scripts (UBTU-22-651025), which are not secrets.
 - `-r` redacts account names: accounts with UID 1000 and above (except nobody, 65534) become `account-N` in the passwd fact, sudo group members become `account-N`, and the user or group field of a sudoers line becomes `account-N` unless it is `ALL`, `Defaults`, an alias or an include. System accounts (UID below 1000) keep their package-defined names. Numbering is per fact.
 - A path inside a directory the collector cannot search looks absent to `test -e`; the collector uses `ls -d` to tell "permission denied" from "no such file", so an unreadable location is reported unavailable rather than as a missing (non-compliant) file.
-- Real run: no WSL distribution or Docker is installed on the development machine, so the collector was not run on Ubuntu here. It was run under Git for Windows' sh (not Linux; most facts unavailable) to check that it completes and writes valid JSON. The Linux-only tests (`test_collector_runs_on_linux`, `test_collector_path_state_tells_denied_from_absent`) run the real collector as a non-root user on the CI `ubuntu-22.04` runner.
-- Fixtures under `backend/tests/fixtures/linux-*.json` are synthetic (invented host names), generated by `backend/scripts/make_linux_fixtures.py`; its `--check` mode, run by the tests, fails when they are out of date.
+- Real run: no WSL distribution or Docker is installed on the development machine, so the collector was not run on Ubuntu here. It was run under Git for Windows' sh (not Linux; most facts unavailable) to check that it completes and writes valid JSON. The Linux-only tests (`test_collector_runs_on_linux`, `test_collector_path_state_tells_denied_from_absent`) run on the CI `ubuntu-22.04` runner in the `linux-collector` job, which also runs the collector under dash and mawk as a normal user and as root and uploads both outputs as workflow artifacts.
+- Fixtures under `backend/tests/fixtures/linux-*.json` are synthetic (invented host names), generated by `backend/scripts/make_linux_fixtures.py`; its `--check` mode, run by the tests, fails when they are out of date. Unit output follows real systemd behaviour: an unmasked ctrl-alt-del.target is reported as `Id=reboot.target` with `Names=reboot.target ctrl-alt-del.target`.
+- **Facts not collected.** /etc/fstab mount options, the modes and owners of /etc/passwd, /etc/shadow and /etc/group, /etc/issue, and the list of UID 0 accounts are not collected, because no rule of the Ubuntu 22.04 V2R10 STIG checks them. (The UID 0 names are still visible in the passwd fact.)
+
+### Review fix round 1 (2026-11-10)
+
+Changes:
+- **systemd aliases.** `systemctl show` reports an alias under its primary unit: an unmasked ctrl-alt-del.target appears as `Id=reboot.target`. The parser used to raise on that, which made the whole `units` fact unavailable, so UBTU-22-211015 and 255015 (plus 213015, 431015, 652010, 653015 and 232025) were Not_Reviewed on default hosts. The collector now also queries `Names`, and `p_units` finds each queried unit by `Id` or `Names` (falling back to argument order when `Names` is absent), reporting the state under the queried name with the primary `id` kept. The other units queried (ssh, auditd, apparmor, rsyslog, ufw, kdump-tools, sssd, chrony) are primary names; their aliases (sshd, syslog, chronyd) appear only in `Names`.
+- **Invalid UTF-8.** `iconv -c` exits 1 when it drops bytes, so the old fallback wrote the raw file. The collector now uses the cleaned output whenever it is non-empty. The envelope records `"utf8_bytes_dropped"` as true, false, or null when iconv is missing, and the parser validates its type.
+- **UBTU-22-271025.** idle-delay 0 (never idle) is now Not_Reviewed, consistent with ClientAliveInterval 0. NotAFinding requires idle-delay from 1 to 600; above 600, lock-enabled false or lock-delay above 0 is Open.
+- **sshd Include.** Include targets are parsed. A target that is not covered by the collected `/etc/ssh/sshd_config.d/*.conf` makes the sshd_config fact unavailable ("... includes X, which the collector does not read"), so every SSH rule is Not_Reviewed.
+- **UBTU-22-412020.** NotAFinding needs a `*` hard limit of 10 or less and every maxlogins entry at 10 or less. Any entry above 10 is Open: `* hard maxlogins 10` plus `@ops hard maxlogins 50` is Open.
+- **Minor fixes:**
+  - nullok is counted as the check text's grep does (see UBTU-22-611060 above).
+  - Audit rule facts hold sorted lists, not sets, so every fact and result is JSON-serialisable.
+  - The ssh_banner fact uses `path_state`, so a banner in an unsearchable directory is unavailable, not missing.
+  - sudoers `@include`/`#include`/`#includedir` lines are collected; `#include` is no longer treated as a comment. An include of anything outside /etc/sudoers and /etc/sudoers.d, or with a `%h` escape, makes the sudoers fact unavailable.
+  - Any `-a never,...` audit rule that mentions a target makes that target's audit check Not_Reviewed.
+  - The wording "never outputs password hashes" was changed in the README, this file and the collector header, which also notes that the AIDE checksums are the only digests reported.
+- **CI.** A new `linux-collector` job on ubuntu-22.04:
+  - switches awk to mawk with update-alternatives;
+  - runs the collector tests under dash and mawk (`STIGWATCH_TEST_AWK=mawk`, `STIGWATCH_RUN_COLLECTOR=1`);
+  - runs the collector as a normal user (`out-user.json`) and as root (`out-root.json`);
+  - validates both with `collect-parse --min-ok 30` / `--min-ok 40` (out of 63 facts) and scans the root output;
+  - uploads both files as the `linux-collector-output` artifact.
+  
+  The full collector run test is skipped in the regular backend job, so the 15-minute limit is not spent on the filesystem-wide `find`.
+
+Regression tests are in `backend/tests/test_linux_hardening.py` (19 tests). RED: with the source reverted to commit 1ce16a9 (by stashing only `backend/stigwatch`, `collectors` and README), the new tests gave `15 failed, 4 passed`. The 4 that passed were the already-correct Include cases and the wording check. In particular, the HEAD parser on the new real-alias fixture gave `units: unavailable - could not be parsed: systemctl show did not report ctrl-alt-del.target`.
+
+GREEN, with real output:
+
+```
+$ python -m pytest -q
+86 passed, 2 skipped in 5.06s
+$ python scripts/make_linux_fixtures.py --check      (exit 0)
+$ python -m stigwatch coverage ubuntu-22.04
+ubuntu-22.04 V2R10: 174 of 191 rules automated, 17 manual review
+CAT I        16         16    14        2         0       0
+CAT II      158        143   138        5         0      15
+CAT III      17         15    12        3         0       2
+$ python -m stigwatch benchmarks --check
+ubuntu-22.04 V2R10: 191 rules (CAT I 16, CAT II 158, CAT III 17)
+windows-server-2022 V2R11: 277 rules (CAT I 31, CAT II 235, CAT III 11)
+$ python -m stigwatch scan tests/fixtures/linux-<name>.json   (Open / NotAFinding / Not_Applicable / Not_Reviewed)
+compliant 0/164/6/21, noncompliant 80/29/6/76, unprivileged 0/94/6/91, minimal 13/94/7/77, gui 0/169/1/21, server-nogui 0/164/6/21
+$ sh collectors/collect-linux.sh -r -o win2.json    (Git for Windows sh; not Linux)
+wrote .../win2.json: 63 facts, 18 unavailable (not run as root); utf8_bytes_dropped = false
+```
+
+The two skips are Linux-only (the full collector run and the permission-denied path test); they run in the new CI job. The collector has still not run on a real Ubuntu host; the CI artifacts will be the first real output.

@@ -150,6 +150,9 @@ def validate(data: Any) -> dict:
             raise ValueError(f"host.{key} must be a string")
     if not isinstance(data.get("collected_at"), str):
         raise ValueError("collector output needs collected_at")
+    for key in ("privileged", "redacted", "utf8_bytes_dropped"):
+        if data.get(key) is not None and not isinstance(data[key], bool):
+            raise ValueError(f"{key} must be true, false or null")
     facts = data.get("facts")
     if not isinstance(facts, dict):
         raise ValueError("collector output has no 'facts' object")
@@ -333,23 +336,34 @@ def p_packages(v: Any) -> dict:
 
 
 def p_units(v: Any) -> dict:
+    """``systemctl show`` prints one block per queried unit, in argument order. A unit
+    that is an alias (an unmasked ctrl-alt-del.target is an alias of reboot.target) is
+    reported under its primary Id with the alias in Names; its state is reported here
+    under the name that was queried."""
     if not isinstance(v, dict) or not isinstance(v.get("text"), str):
         raise ValueError("expected {queried, text}")
-    out: dict[str, dict] = {}
+    queried = v.get("queried") or []
+    blocks = []
     for block in re.split(r"\n\s*\n", v["text"].strip()):
         props = {}
         for ln in block.splitlines():
             k, sep, val = ln.partition("=")
             if sep:
                 props[k.strip()] = val.strip()
-        uid = props.get("Id")
-        if not uid:
-            continue
-        out[uid] = {"load": props.get("LoadState"), "active": props.get("ActiveState"),
-                    "file": props.get("UnitFileState") or None}
-    for name in v.get("queried") or []:
-        if name not in out:
+        if props.get("Id"):
+            blocks.append(props)
+    out: dict[str, dict] = {}
+    for i, name in enumerate(queried):
+        def names(p: dict) -> set[str]:
+            return {p.get("Id", "")} | set(p.get("Names", "").split())
+        match = [p for p in blocks if name in names(p)]
+        if not match and len(blocks) == len(queried) and "Names" not in blocks[i]:
+            match = [blocks[i]]  # older output without Names: argument order
+        if not match:
             raise ValueError(f"systemctl show did not report {name}")
+        p = match[0]
+        out[name] = {"load": p.get("LoadState"), "active": p.get("ActiveState"),
+                     "file": p.get("UnitFileState") or None, "id": p.get("Id")}
     return out
 
 
@@ -360,6 +374,18 @@ SSHD_KEYWORDS = (
 )
 _SSHD_INT = {"clientalivecountmax", "clientaliveinterval"}
 _SSHD_RE = re.compile(r"^\s*([A-Za-z0-9]+)(?:\s*=\s*|\s+)(.*?)\s*$")
+
+
+SSHD_COLLECTED_GLOB = "/etc/ssh/sshd_config.d/*.conf"
+
+
+def _sshd_include_collected(target: str) -> bool:
+    """True when every file an Include target can name is among the files collected."""
+    if target == SSHD_COLLECTED_GLOB:
+        return True
+    # Any pattern in that directory ending in a literal ".conf" names a subset of *.conf.
+    head, _, name = target.rpartition("/")
+    return head == "/etc/ssh/sshd_config.d" and name.endswith(".conf")
 
 
 def p_sshd_config(v: Any) -> dict:
@@ -376,6 +402,15 @@ def p_sshd_config(v: Any) -> dict:
         key, val = m.group(1).lower(), m.group(2).strip().strip('"')
         if key == "match":
             in_match[path] = val.lower() != "all"
+            continue
+        if key == "include":
+            for target in val.split():
+                target = target.strip('"')
+                if not target.startswith("/"):
+                    target = "/etc/ssh/" + target  # sshd resolves relative paths in /etc/ssh
+                if not _sshd_include_collected(target):
+                    raise ValueError(f"{path} includes {target}, which the collector does not read; "
+                                     "the effective sshd settings are unknown")
             continue
         if key not in occurrences:
             continue
@@ -488,7 +523,7 @@ def p_useradd_defaults(v: Any) -> dict:
     return {"exists": exists, "INACTIVE": vals[-1] if vals else None}
 
 
-_PAM_RE = re.compile(r"^\s*(-?[a-z]+)\s+(\[[^\]]*\]|\S+)\s+(\S+)\s*(.*)$")
+_PAM_RE = re.compile(r"^\s*(-?[a-z]+)\s+(\[[^\]]*\]|\S+)\s+(\S+)\s*(.*)$", re.I)
 
 
 def _pam(text: str) -> list[dict]:
@@ -500,7 +535,7 @@ def _pam(text: str) -> list[dict]:
         if not m:
             continue
         args = m.group(4).split()
-        out.append({"type": m.group(1).lstrip("-"), "control": m.group(2),
+        out.append({"type": m.group(1).lstrip("-").lower(), "control": m.group(2).lower(),
                     "module": m.group(3).rsplit("/", 1)[-1], "args": args})
     return out
 
@@ -513,8 +548,10 @@ def _arg(args: list[str], name: str) -> str | None:
     return None
 
 
-def _nullok(lines: list[dict]) -> int:
-    return sum(1 for ln in lines if any(a.startswith("nullok") for a in ln["args"]))
+def _nullok(text: str) -> int:
+    """Active lines containing "nullok", as the check text's grep counts them (whatever
+    the PAM type's case or whether the line parses)."""
+    return sum(1 for ln in _active(text.splitlines()) if "nullok" in ln)
 
 
 def p_pam_common_auth(v: Any) -> dict:
@@ -524,7 +561,7 @@ def p_pam_common_auth(v: Any) -> dict:
     delays = [d for d in delays if d is not None]
     return {
         "exists": exists,
-        "nullok": _nullok(lines),
+        "nullok": _nullok(text),
         "faillock": any(ln["module"] == "pam_faillock.so" for ln in lines),
         "faildelay_delay": min(delays) if delays else None,
         "pkcs11": any(ln["module"] == "pam_pkcs11.so" for ln in lines),
@@ -541,7 +578,7 @@ def p_pam_common_password(v: Any) -> dict:
     rounds = [_int(_arg(ln["args"], "rounds")) for ln in unix]
     return {
         "exists": exists,
-        "nullok": _nullok(lines),
+        "nullok": _nullok(text),
         "pwquality_requisite": bool(pwq),
         "pwquality_retry": retry,
         "unix_sha512": all("sha512" in ln["args"] for ln in unix) if unix else False,
@@ -593,6 +630,7 @@ def p_limits(v: Any) -> dict:
         "entries": entries,
         "all_users_limit": min(star) if star else None,
         "min_value": min((e["value"] for e in entries), default=None),
+        "max_value": max((e["value"] for e in entries), default=None),
     }
 
 
@@ -734,8 +772,21 @@ _ALL_ALL = re.compile(r"^ALL\s+ALL\s*=\s*\(\s*ALL\s*(:\s*ALL\s*)?\)\s+ALL\s*$", 
 
 def p_sudoers(v: Any) -> dict:
     nopasswd = not_auth = all_all = 0
-    for _, ln in _multi(v):
+    for path, ln in _multi(v):
         s = ln.strip()
+        inc = re.match(r"^[@#](include(?:dir)?)\s+(.+?)\s*$", s)
+        if inc:
+            kind, target = inc.group(1), inc.group(2).strip('"')
+            if not target.startswith("/"):
+                target = path.rsplit("/", 1)[0] + "/" + target
+            target = target.rstrip("/")
+            collected = (target == "/etc/sudoers.d" if kind == "includedir"
+                         else target == "/etc/sudoers" or (target.startswith("/etc/sudoers.d/")
+                                                           and "%" not in target))
+            if not collected:
+                raise ValueError(f"{path} includes {target}, which the collector does not read; "
+                                 "the sudoers rules are unknown")
+            continue
         if s.startswith("#"):
             continue
         nopasswd += bool(re.search(r"NOPASSWD", s, re.I))
@@ -825,6 +876,9 @@ def parse_audit_rule(line: str) -> dict | None:
             i += 1
             continue
         i += 2
+    # sorted lists, not sets: facts must stay JSON-serialisable (scans are stored)
+    rule["syscalls"] = sorted(rule["syscalls"])
+    rule["filters"] = sorted(rule["filters"])
     return rule
 
 
@@ -866,7 +920,7 @@ def _audit_validate(arg: Any) -> None:
 def _audit_mentions(rules: list[dict], arg: dict) -> list[dict]:
     if "syscalls" in arg:
         want = set(arg["syscalls"])
-        return [r for r in rules if r["syscalls"] & want]
+        return [r for r in rules if set(r["syscalls"]) & want]
     target = canon_path(arg.get("watch") or arg.get("exec"))
     return [r for r in rules if r["path"] == target]
 
@@ -877,6 +931,8 @@ def _audit_test(rules: Any, arg: dict) -> bool | None:
     mentioned = _audit_mentions(rules, arg)
     if not mentioned:
         return False  # the loaded rule set has nothing for this target
+    if any("never" in (r["action"] or "").split(",") for r in mentioned):
+        return None  # a "never" rule may suppress the target's events: not decidable here
     exit_rules = [r for r in mentioned if r["kind"] == "syscall" and r["action"] == "always,exit"]
     if "watch" in arg:
         need = set(arg["perm"])
@@ -886,8 +942,8 @@ def _audit_test(rules: Any, arg: dict) -> bool | None:
         return None
     if "exec" in arg:
         for r in exit_rules:
-            if ("x" in r["perm"] and r["syscalls"] <= {"all"}
-                    and r["filters"] == {"auid>=1000", "auid!=-1"}):
+            if ("x" in r["perm"] and set(r["syscalls"]) <= {"all"}
+                    and set(r["filters"]) == {"auid>=1000", "auid!=-1"}):
                 return True
         return None
     arches = arg.get("arches", ["b32", "b64"])
@@ -897,8 +953,8 @@ def _audit_test(rules: Any, arg: dict) -> bool | None:
         for variant in variants:
             covered: set[str] = set()
             for r in exit_rules:
-                if r["arch"] == arch and r["filters"] == set(variant):
-                    covered |= r["syscalls"]
+                if r["arch"] == arch and set(r["filters"]) == set(variant):
+                    covered |= set(r["syscalls"])
             if not want <= covered:
                 return None
     return True

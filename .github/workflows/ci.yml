@@ -29,6 +29,58 @@ jobs:
         working-directory: backend
         run: python -m stigwatch benchmarks --check
 
+  # Runs the real Ubuntu collector under dash and mawk, as a normal user and as root,
+  # and keeps both outputs as artifacts. Task 11 extends this job.
+  linux-collector:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install dependencies
+        run: pip install -r backend/requirements-dev.txt
+      - name: Use mawk as awk (the Ubuntu default)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q mawk
+          sudo update-alternatives --set awk /usr/bin/mawk
+          readlink -f "$(command -v awk)"
+          readlink -f /bin/sh
+      - name: Collector tests under dash and mawk
+        working-directory: backend
+        env:
+          STIGWATCH_TEST_AWK: mawk
+          STIGWATCH_RUN_COLLECTOR: "1"
+        run: python -m pytest -q tests/test_linux_checks.py tests/test_linux_hardening.py -k "collector"
+      - name: Run the collector as a normal user
+        timeout-minutes: 10
+        run: sh collectors/collect-linux.sh -r -o out-user.json
+      - name: Run the collector as root
+        timeout-minutes: 10
+        run: |
+          sudo sh collectors/collect-linux.sh -r -o out-root.json
+          sudo chown "$(id -u):$(id -g)" out-root.json
+      - name: Validate both outputs
+        working-directory: backend
+        run: |
+          python -m stigwatch collect-parse linux ../out-user.json --min-ok 30
+          python -m stigwatch collect-parse linux ../out-root.json --min-ok 40
+      - name: Scan the root output
+        working-directory: backend
+        run: python -m stigwatch scan ../out-root.json
+      - name: Keep the collector output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-collector-output
+          path: out-*.json
+          if-no-files-found: warn
+          retention-days: 14
+
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 15

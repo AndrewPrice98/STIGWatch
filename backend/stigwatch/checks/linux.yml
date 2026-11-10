@@ -434,8 +434,14 @@ checks:
       all:
         - {path: gsettings.lock_enabled, eq: true}
         - {path: gsettings.lock_delay, eq: 0}
+        - {path: gsettings.idle_delay, ge: 1}
         - {path: gsettings.idle_delay, le: 600}
-    rationale: With a GUI installed, the screen must lock immediately (lock-delay 0) after at most 600 seconds idle.
+    unmet_if:
+      any:
+        - {path: gsettings.lock_enabled, eq: false}
+        - {path: gsettings.lock_delay, gt: 0}
+        - {path: gsettings.idle_delay, gt: 600}
+    rationale: With a GUI installed, the screen must lock immediately (lock-delay 0) after 1 to 600 seconds idle; idle-delay 0 (never idle, which the check text does not flag) is left for review.
 
   # ------------------------------------------------------------------ accounts and login
   - stig_id: UBTU-22-411010
@@ -502,12 +508,15 @@ checks:
   - stig_id: UBTU-22-412020
     facts: [limits]
     observe: [limits.entries]
-    logic: {path: limits.all_users_limit, le: 10}
+    logic:
+      all:
+        - {path: limits.all_users_limit, le: 10}
+        - {path: limits.max_value, le: 10}
     unmet_if:
       any:
         - {path: limits.count, eq: 0}
-        - {path: limits.min_value, gt: 10}
-    rationale: A hard maxlogins limit of 10 or less must apply to all accounts (*); limits only for some accounts are left for review.
+        - {path: limits.max_value, gt: 10}
+    rationale: A hard maxlogins limit of 10 or less must apply to all accounts (*) and no maxlogins entry may exceed 10; limits only for some accounts are left for review.
 
   - stig_id: UBTU-22-412030
     facts: [shell_tmout]

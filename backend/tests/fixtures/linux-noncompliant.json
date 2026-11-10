@@ -5,6 +5,7 @@
  "privileged": true,
  "redacted": true,
  "escaper": "awk",
+ "utf8_bytes_dropped": false,
  "host": {
   "name": "jammy-legacy-07",
   "os_release": "Ubuntu 22.04.5 LTS",
@@ -86,10 +87,10 @@
      "sssd.service",
      "chrony.service"
     ],
-    "text": "Id=ssh.service\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=auditd.service\nLoadState=not-found\nActiveState=inactive\nUnitFileState=\n\nId=apparmor.service\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=rsyslog.service\nLoadState=loaded\nActiveState=inactive\nUnitFileState=disabled\n\nId=ufw.service\nLoadState=loaded\nActiveState=inactive\nUnitFileState=disabled\n\nId=kdump-tools.service\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=ctrl-alt-del.target\nLoadState=loaded\nActiveState=inactive\nUnitFileState=static\n\nId=sssd.service\nLoadState=not-found\nActiveState=inactive\nUnitFileState=\n\nId=chrony.service\nLoadState=not-found\nActiveState=inactive\nUnitFileState="
+    "text": "Id=ssh.service\nNames=ssh.service sshd.service\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=auditd.service\nNames=auditd.service\nLoadState=not-found\nActiveState=inactive\nUnitFileState=\n\nId=apparmor.service\nNames=apparmor.service\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=rsyslog.service\nNames=rsyslog.service syslog.service\nLoadState=loaded\nActiveState=inactive\nUnitFileState=disabled\n\nId=ufw.service\nNames=ufw.service\nLoadState=loaded\nActiveState=inactive\nUnitFileState=disabled\n\nId=kdump-tools.service\nNames=kdump-tools.service\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=reboot.target\nNames=reboot.target ctrl-alt-del.target\nLoadState=loaded\nActiveState=inactive\nUnitFileState=static\n\nId=sssd.service\nNames=sssd.service\nLoadState=not-found\nActiveState=inactive\nUnitFileState=\n\nId=chrony.service\nNames=chrony.service\nLoadState=not-found\nActiveState=inactive\nUnitFileState="
    },
    "reason": null,
-   "command": "systemctl show -p Id -p LoadState -p ActiveState -p UnitFileState ssh.service auditd.service apparmor.service rsyslog.service ufw.service kdump-tools.service ctrl-alt-del.target sssd.service chrony.service"
+   "command": "systemctl show -p Id -p Names -p LoadState -p ActiveState -p UnitFileState ssh.service auditd.service apparmor.service rsyslog.service ufw.service kdump-tools.service ctrl-alt-del.target sssd.service chrony.service"
   },
   "sshd_config": {
    "status": "ok",

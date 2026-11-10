@@ -288,9 +288,10 @@ def test_not_applicable_requires_fact(checkset):
 
 def test_not_applicable_from_check_text_note():
     data = load("compliant")
+    old = "Names=rsyslog.service syslog.service\nLoadState=loaded\nActiveState=active"
+    assert old in data["facts"]["units"]["value"]["text"]
     data["facts"]["units"]["value"]["text"] = data["facts"]["units"]["value"]["text"].replace(
-        "Id=rsyslog.service\nLoadState=loaded\nActiveState=active",
-        "Id=rsyslog.service\nLoadState=loaded\nActiveState=inactive")
+        old, old.replace("ActiveState=active", "ActiveState=inactive"))
     assert results(data)["UBTU-22-232025"].status == NAF
 
 
@@ -597,8 +598,8 @@ def test_collector_contains_no_write_commands():
         for cmd, allowed in (
             ("rm", r"rm -rf SAFE"),
             ("passwd", r"(have passwd|run passwd -S root)"),
-            ("systemctl", r"(have systemctl|run systemctl show -p Id -p LoadState -p ActiveState "
-                          r"-p UnitFileState \$UNITS)"),
+            ("systemctl", r"(have systemctl|run systemctl show -p Id -p Names -p LoadState "
+                          r"-p ActiveState -p UnitFileState \$UNITS)"),
             ("auditctl", r"(have auditctl|run auditctl Q)"),
             ("ufw", r"(have ufw|run ufw status)"),
             ("gsettings", r"(have gsettings|gsettings get \$pair)"),
@@ -643,8 +644,14 @@ def _function(name: str) -> str:
 def test_collector_json_escaper(tmp_path):
     # The function is run from a file: passing it with "sh -c" would expose it to the
     # Windows command-line quoting rules on developer machines.
+    # STIGWATCH_TEST_AWK=mawk (set in CI) runs the escaper under that awk implementation.
+    awk = os.environ.get("STIGWATCH_TEST_AWK")
+    if awk:
+        assert shutil.which(awk), f"{awk} is not installed"
+    prefix = f'awk() {{ {awk} "$@"; }}\n' if awk else ""
     script = tmp_path / "jstr.sh"
-    script.write_text("ESCAPER=awk\n" + _function("jstr") + "jstr\n", encoding="utf-8", newline="\n")
+    script.write_text(prefix + "ESCAPER=awk\n" + _function("jstr") + "jstr\n", encoding="utf-8",
+                      newline="\n")
     tricky = 'quote " back\\slash\ttab\rCR \x01ctl \x1f é ünï 中文 {"a": [1]}\n\nlast'
     proc = subprocess.run([_sh(), str(script)], input=tricky.encode("utf-8"),
                           capture_output=True, timeout=60)
@@ -654,7 +661,9 @@ def test_collector_json_escaper(tmp_path):
     assert json.loads(empty.stdout) == ""
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux") or _sh() is None, reason="Linux only")
+@pytest.mark.skipif(not sys.platform.startswith("linux") or _sh() is None
+                    or os.environ.get("STIGWATCH_RUN_COLLECTOR") != "1",
+                    reason="Linux only; set STIGWATCH_RUN_COLLECTOR=1 (the CI linux-collector job does)")
 def test_collector_runs_on_linux(tmp_path):
     out = tmp_path / "out.json"
     proc = subprocess.run([_sh(), str(COLLECTOR), "-o", str(out), "-r"], capture_output=True, text=True,

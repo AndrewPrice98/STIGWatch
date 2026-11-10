@@ -181,11 +181,22 @@ def packages_v(installed, removed=()):
     return {"queried": PKGS, "text": "\n".join(rows)}
 
 
+# What systemd reports for aliases: an unmasked ctrl-alt-del.target is shown as its
+# target, reboot.target, with the alias in Names; ssh, chrony and rsyslog carry aliases too.
+ALIASES = {"ssh.service": ("ssh.service", "ssh.service sshd.service"),
+           "chrony.service": ("chrony.service", "chrony.service chronyd.service"),
+           "rsyslog.service": ("rsyslog.service", "rsyslog.service syslog.service")}
+
+
 def units_v(states):
     blocks = []
     for unit in UNITS:
         load, active, file_state = states.get(unit, ("not-found", "inactive", ""))
-        blocks.append(f"Id={unit}\nLoadState={load}\nActiveState={active}\nUnitFileState={file_state}")
+        uid, names = ALIASES.get(unit, (unit, unit)) if load != "not-found" else (unit, unit)
+        if unit == "ctrl-alt-del.target" and load != "masked":
+            uid, names = "reboot.target", "reboot.target ctrl-alt-del.target"
+        blocks.append(f"Id={uid}\nNames={names}\nLoadState={load}\nActiveState={active}\n"
+                      f"UnitFileState={file_state}")
     return {"queried": UNITS, "text": "\n\n".join(blocks)}
 
 
@@ -194,7 +205,7 @@ def stat(role, mode, user, group, kind, path):
 
 
 DPKG_CMD = ("dpkg-query -W -f '${Package}\\t${db:Status-Abbrev}\\t${Version}\\n' " + " ".join(PKGS))
-UNITS_CMD = "systemctl show -p Id -p LoadState -p ActiveState -p UnitFileState " + " ".join(UNITS)
+UNITS_CMD = "systemctl show -p Id -p Names -p LoadState -p ActiveState -p UnitFileState " + " ".join(UNITS)
 MACHINE = "3b018e681c904487b11671b9c1987cce"
 
 
@@ -420,7 +431,7 @@ def compliant(host: str = "jammy-stig-01") -> dict:
         facts[fid] = ok(find_v(), cmd)
     return {
         "collector": "linux", "version": 1, "collected_at": COLLECTED_AT, "privileged": True, "redacted": True,
-        "escaper": "awk",
+        "escaper": "awk", "utf8_bytes_dropped": False,
         "host": {"name": host, "os_release": "Ubuntu 22.04.5 LTS", "kernel": "5.15.0-126-fips",
                  "virtualization": "kvm"},
         "facts": facts,

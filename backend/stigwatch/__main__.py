@@ -199,7 +199,10 @@ def _cmd_create_admin(args: argparse.Namespace) -> int:
         print("Set these environment variables on your host. Keep them secret.\n")
         for key, value in values.items():
             print(f"{key}={value}")
+        print("\nOnly on Vercel, or behind a proxy that overwrites X-Forwarded-For, add:")
         print("STIGWATCH_TRUST_PROXY=true")
+        print("(If your host's proxies append to X-Forwarded-For, set STIGWATCH_TRUSTED_PROXIES to the")
+        print("number of proxies in front of the app instead; the client address is read from the right.)")
         return 0
     _update_env_file(config.ENV_FILE, {**values, "STIGWATCH_COOKIE_SECURE": "false"})
     print(f"Admin '{args.username}' saved to {config.ENV_FILE} (git-ignored).")
@@ -271,6 +274,7 @@ def _demo_check(path: Path) -> int:
     fixture = demo.load_fixture()
     previous = os.environ.get("STIGWATCH_DB")
     problems: list[str] = []
+    hosts: list = []
     with tempfile.TemporaryDirectory() as tmp:
         scratch = Path(tmp) / "check.db"
         os.environ["STIGWATCH_DB"] = str(scratch)
@@ -284,6 +288,8 @@ def _demo_check(path: Path) -> int:
                            for t in db.host_trend(conn, host["id"])]
                     if got != fixture["expected"].get(host["name"]):
                         problems.append(f"{host['name']}: stored counts differ from the fixture")
+            except Exception as exc:  # seeding itself failed: report it, do not crash
+                problems.append(f"seeding failed: {type(exc).__name__}: {exc}")
             finally:
                 conn.close()
         finally:

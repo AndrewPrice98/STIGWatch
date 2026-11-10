@@ -186,10 +186,16 @@ limiter = LoginLimiter()
 
 
 def client_ip(request: Request) -> str:
-    # Behind a trusted proxy (Vercel, Render, Fly...), the real client is the first
-    # X-Forwarded-For entry. Only trust it when configured to, since clients can set it.
-    if config.trust_proxy():
-        forwarded = request.headers.get("x-forwarded-for", "")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
+    """The address used for login rate limiting.
+
+    By default the socket peer. Behind trusted reverse proxies (STIGWATCH_TRUSTED_PROXIES=<count>,
+    or STIGWATCH_TRUST_PROXY=true for one) it is the right-most untrusted X-Forwarded-For entry,
+    i.e. the one `hops` places from the right. Proxies that append (Render, Fly, nginx with
+    $proxy_add_x_forwarded_for) leave whatever the client sent on the left, so the left-most
+    entry must never be used: a client could rotate it to dodge the limiter."""
+    hops = config.trusted_proxy_hops()
+    if hops:
+        entries = [e.strip() for e in request.headers.get("x-forwarded-for", "").split(",") if e.strip()]
+        if entries:
+            return entries[max(len(entries) - hops, 0)]
     return request.client.host if request.client else "unknown"

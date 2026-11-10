@@ -18,16 +18,19 @@ sys.path.insert(0, str(ROOT / "backend"))
 # The admin variables (STIGWATCH_ADMIN_PASSWORD_HASH, STIGWATCH_SECRET_KEY) are optional here:
 # without them visitors browse as a read-only guest and nobody can sign in.
 # Serverless defaults; any of these can be overridden in Vercel's environment settings.
-os.environ.setdefault("STIGWATCH_DB", "/tmp/stigwatch.db")  # /tmp is the only writable path
-os.environ.setdefault("STIGWATCH_DEMO", "true")
-os.environ.setdefault("STIGWATCH_TRUST_PROXY", "true")  # Vercel sets X-Forwarded-For itself
+# A blank value counts as unset, as everywhere else.
+for _name, _default in (("STIGWATCH_DB", "/tmp/stigwatch.db"),  # /tmp is the only writable path
+                        ("STIGWATCH_DEMO", "true"),
+                        ("STIGWATCH_TRUST_PROXY", "1")):  # Vercel sets X-Forwarded-For itself
+    if not os.environ.get(_name, "").strip():
+        os.environ[_name] = _default
 
 # Vercel Functions reject request bodies over 4.5 MB before the app sees them
 # (https://vercel.com/docs/functions/limitations#request-body-size). The upload cap plus the
 # multipart allowance must stay under that, so it is never allowed above 4 MB here.
 VERCEL_MAX_UPLOAD_MB = 4
 try:
-    _requested = int(os.environ.get("STIGWATCH_MAX_UPLOAD_MB", VERCEL_MAX_UPLOAD_MB))
+    _requested = int(os.environ.get("STIGWATCH_MAX_UPLOAD_MB", "").strip() or VERCEL_MAX_UPLOAD_MB)
 except ValueError:
     _requested = VERCEL_MAX_UPLOAD_MB
 os.environ["STIGWATCH_MAX_UPLOAD_MB"] = str(min(max(_requested, 1), VERCEL_MAX_UPLOAD_MB))

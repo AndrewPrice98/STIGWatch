@@ -225,6 +225,23 @@ def test_forwarded_ip_only_trusted_when_configured(anon, monkeypatch):
     assert login(anon, headers={"X-Forwarded-For": "5.6.7.8"}).status_code == 200
 
 
+def test_forwarded_ip_uses_the_rightmost_untrusted_entry(anon, monkeypatch):
+    """A proxy that appends leaves client-supplied entries on the left; rotating them must not
+    dodge the limiter. With one trusted proxy the right-most entry is the client address."""
+    monkeypatch.setenv("STIGWATCH_TRUST_PROXY", "true")
+    for i in range(5):
+        login(anon, password="nope", headers={"X-Forwarded-For": f"10.0.0.{i}, 203.0.113.9"})
+    assert login(anon, headers={"X-Forwarded-For": "10.0.0.99, 203.0.113.9"}).status_code == 429
+    assert login(anon, headers={"X-Forwarded-For": "10.0.0.99, 203.0.113.10"}).status_code == 200
+
+
+def test_forwarded_ip_hop_count(anon, monkeypatch):
+    monkeypatch.setenv("STIGWATCH_TRUSTED_PROXIES", "2")
+    for i in range(5):
+        login(anon, password="nope", headers={"X-Forwarded-For": f"10.0.0.{i}, 203.0.113.9, 172.16.0.1"})
+    assert login(anon, headers={"X-Forwarded-For": "1.1.1.1, 203.0.113.9, 172.16.0.2"}).status_code == 429
+
+
 # -- fail closed ----------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("var, value", [

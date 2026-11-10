@@ -403,7 +403,7 @@ def test_demo_guest_lazy_seed_and_read_shapes(db_file, monkeypatch):
     assert len(c2.get("/api/hosts").json()) == 14
 
 
-# ---------------------------------------------------------------- fix round 1
+# ---------------------------------------------------------------- request body caps
 
 def test_login_body_is_capped_at_64k_but_uploads_keep_the_big_cap(client, anon):
     r = anon.post("/api/auth/login", content=b"x" * (1024 * 1024),

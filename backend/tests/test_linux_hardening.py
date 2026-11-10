@@ -1,4 +1,4 @@
-"""Regression tests for the Task 3 review (fix round 1)."""
+"""Regression tests for the Ubuntu collector parsers: systemd aliases, invalid UTF-8, sshd Include, audit and sudoers forms."""
 
 import copy
 import json

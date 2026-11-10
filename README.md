@@ -44,12 +44,13 @@ python -m stigwatch scan ../host.json                 # per-status counts and Op
 python -m stigwatch coverage ubuntu-22.04             # automated and manual rules by CAT
 ```
 
-The collector is read-only. It writes only the output file and a temporary directory it removes on exit, and it never outputs password hashes: /etc/shadow and grub.cfg yield counts only. The only digests it reports are the SHA-1 and MD5 checksums of the AIDE cron scripts, which are not secrets. Without root, privileged facts are recorded as unavailable and the rules that need them are reported Not Reviewed. Every command it runs:
+The collector is read-only. It writes only the output file and a temporary directory it removes on exit (`gsettings` runs with its runtime and cache directories pointed at that directory and the session bus disabled), and it never outputs password hashes: /etc/shadow and grub.cfg yield counts only. The only digests it reports are the SHA-1 and MD5 checksums of the AIDE cron scripts, which are not secrets. Without root, privileged facts are recorded as unavailable and the rules that need them are reported Not Reviewed. Every command it runs:
 
 - reads: `cat`, `grep`, `awk`, `sed`, `head`, `wc`, `tr`, `cut`, `sort`, `ls -d`, `dirname`, `find` (with `-printf`, never `-delete` or `-exec`), `sha1sum`, `md5sum`, `iconv`
 - host and package state: `hostname`, `uname`, `id -u`, `date -u`, `systemd-detect-virt`, `dpkg-query -W`, `systemctl show`, `timedatectl show`, `lsblk -P`, `dmesg`
 - security state: `sshd -T`, `auditctl -l`, `auditctl -s`, `passwd -S root`, `ufw status`, `aa-status`, `gsettings get`
-- housekeeping: `mktemp -d` and `rm -rf` of that temporary directory
+- housekeeping: `mktemp -d` and `rm -rf` of that temporary directory, and `env` (only to run `gsettings get` with a private runtime directory)
+- fallback: `python3`, used to escape JSON strings only when `awk` is missing (it is part of every Ubuntu install, so normally not run)
 
 ### Windows Server 2022 collector
 
@@ -98,28 +99,32 @@ Generated files are checked in CI: playbooks with `ansible-playbook --syntax-che
 
 ## Exports
 
-- Checklist per scan as `.ckl` (STIG Viewer 2 XML) and `.cklb` (STIG Viewer 3 JSON); element and key names are tested against names taken from a published sample.
+- Checklist per scan as `.ckl` (STIG Viewer 2 XML) and `.cklb` (STIG Viewer 3 JSON), with the fields DISA's checklists carry (SRG group title, classification, class, target key, STIG UUID, legacy ids); element and key names are tested against names taken from published samples. A checklist is labelled with the benchmark release its scan was evaluated against, and says so when the installed release differs (DECISIONS.md, Benchmark releases).
+- An exported checklist for an earlier scan shows the assessor comments as they were when that scan was stored.
 - Fleet summary as CSV and as a self-contained HTML report (served as a download with a sandboxing Content-Security-Policy).
 
 ## Quick start
 
-Needs Python 3.12+ and Node 20+.
+Needs Python 3.12+ and Node 20.19+ (`^20.19.0 || >=22.12.0`, as `package.json` requires).
 
 ```sh
 # backend: the fictional demo fleet in its own database, served in demo mode (read-only guests)
 python -m venv backend/.venv
-backend/.venv/bin/pip install -r backend/requirements-dev.txt     # Windows: backend\.venv\Scripts\pip
-cd backend && python -m stigwatch demo --serve                      # http://127.0.0.1:8000
+source backend/.venv/bin/activate          # Windows (PowerShell): backend\.venv\Scripts\Activate.ps1
+pip install -r backend/requirements-dev.txt
+cd backend; python -m stigwatch demo --serve                       # http://127.0.0.1:8000
 
 # frontend (second terminal; Vite proxies /api to the backend)
 npm ci && npm run dev                                               # http://localhost:5173
 ```
 
+Without activating the environment, call its interpreter directly: `backend/.venv/bin/python -m pip install -r backend/requirements-dev.txt`, then `cd backend && .venv/bin/python -m stigwatch demo --serve` (on Windows `backend\.venv\Scripts\python.exe`).
+
 To use your own data instead: `python -m stigwatch create-admin` (writes `backend/.env`), `python -m stigwatch serve`, sign in, and upload collector output. `python -m stigwatch scan host.json` and `collect-parse` work on a collector file without the server.
 
-Environment variables, by name only (see [.env.example](.env.example)): `STIGWATCH_ADMIN_USER`, `STIGWATCH_ADMIN_PASSWORD_HASH`, `STIGWATCH_SECRET_KEY`, `STIGWATCH_SESSION_HOURS`, `STIGWATCH_COOKIE_SECURE`, `STIGWATCH_TRUST_PROXY`, `STIGWATCH_DB`, `STIGWATCH_MAX_UPLOAD_MB`, `STIGWATCH_DATA_DIR`, `STIGWATCH_DEMO`, `STIGWATCH_GUEST`, `STIGWATCH_API_URL`.
+Environment variables, by name only (see [.env.example](.env.example); a blank value counts as unset): `STIGWATCH_ADMIN_USER`, `STIGWATCH_ADMIN_PASSWORD_HASH`, `STIGWATCH_SECRET_KEY`, `STIGWATCH_SESSION_HOURS`, `STIGWATCH_COOKIE_SECURE`, `STIGWATCH_TRUST_PROXY`, `STIGWATCH_TRUSTED_PROXIES`, `STIGWATCH_DB`, `STIGWATCH_MAX_UPLOAD_MB`, `STIGWATCH_DATA_DIR`, `STIGWATCH_DEMO`, `STIGWATCH_GUEST`, `STIGWATCH_API_URL`.
 
-**Deploying to Vercel.** `api/index.py`, `vercel.json` and the root `requirements.txt` are the serverless entry point (same shape as CMMC Ready). The demo database is built in `/tmp` per instance on first use, so the demo resets when an instance is replaced. Vercel Functions reject request bodies over 4.5 MB ([limits](https://vercel.com/docs/functions/limitations#request-body-size)), so there the upload cap is held at 4 MB; the API reports it as `max_upload_mb` and the upload form checks file size first. An admin exists only if the owner sets the password-hash and secret variables; [DECISIONS.md](DECISIONS.md) explains why admin writes on the demo are deliberate.
+**Deploying to Vercel.** `api/index.py`, `vercel.json` and the root `requirements.txt` are the serverless entry point. The demo database is built in `/tmp` per instance on first use, so the demo resets when an instance is replaced. Vercel Functions reject request bodies over 4.5 MB ([limits](https://vercel.com/docs/functions/limitations#request-body-size)), so there the upload cap is held at 4 MB; the API reports it as `max_upload_mb` and the upload form checks file size first. The entry point sets `STIGWATCH_TRUST_PROXY=true` because Vercel overwrites `X-Forwarded-For`; on any other host leave it off, or set `STIGWATCH_TRUSTED_PROXIES` to the number of proxies in front of the app (the client address is read from the right of the header, so a client-supplied left-hand entry cannot dodge the login rate limit). An admin exists only if the owner sets the password-hash and secret variables; [DECISIONS.md](DECISIONS.md) explains why admin writes on the demo are deliberate.
 
 ## Architecture
 
@@ -149,7 +154,7 @@ flowchart LR
 
 ## Tests and CI
 
-Real counts at the time of writing: **306 backend tests** (pytest, including the Vercel entry-point tests), **26 frontend unit tests** (`node --test`) and a small Playwright smoke test (`e2e/`: guests are read-only; a rule that lost visibility is never shown as fixed).
+Real counts at the time of writing: **332 backend tests** (pytest, including the Vercel entry-point tests), **27 frontend unit tests** (`node --test`) and a small Playwright smoke test (`e2e/`: guests are read-only; a rule that lost visibility is never shown as fixed).
 
 ```sh
 cd backend && python -m pytest -q -rs     # -rs names skipped tests
@@ -160,7 +165,7 @@ cd e2e && npm ci && npx playwright install chromium && node smoke.mjs   # with t
 
 CI (`.github/workflows/ci.yml`): backend tests, benchmark, coverage and demo checks, frontend tests and build, the e2e smoke test, dependency audits and gitleaks, plus the real collectors on GitHub runners:
 
-- `ubuntu-22.04`: `sudo sh collectors/collect-linux.sh`, then `python -m stigwatch collect-parse linux out.json --min-ok 40`.
+- `ubuntu-22.04`: `sudo sh collectors/collect-linux.sh`, then `python -m stigwatch collect-parse linux out.json --min-ok 40` with `--require` for the facts most checks rest on (`sshd_config`, `packages`, `units`, `login_defs`, `shadow`, `audit_rules`, `sysctl_runtime`).
 - `windows-2022`: `collectors/collect-windows.ps1` under PowerShell 7 and under Windows PowerShell 5.1, each in its own step, validated with `collect-parse windows`.
 - Generated remediation: Ansible syntax check and lint on Ubuntu; PowerShell parse and dry run on Windows.
 
@@ -170,7 +175,8 @@ CI (`.github/workflows/ci.yml`): backend tests, benchmark, coverage and demo che
 - **Not a SCAP replacement.** STIGWatch evaluates its own collected facts with its own checks. It is not SCAP-validated and does not replace the SCAP Compliance Checker, Evaluate-STIG or an assessor.
 - **Run collectors as root or Administrator for full coverage.** Without them, privileged facts are unavailable and the rules that need them are Not Reviewed; the dashboard says when a scan ran unprivileged.
 - **Checks are validated against the GitHub `ubuntu-22.04` and `windows-2022` runners plus fixtures,** not against a production fleet. Treat a result as evidence to review, not a verdict.
-- Two benchmarks only (Ubuntu 22.04 LTS V2R10 and Windows Server 2022 V2R11). Newer DISA releases can be imported with `python -m stigwatch benchmarks import`, but the checks are written against these releases.
+- **Checklists follow the STIG Viewer CKL and CKLB formats but have not yet been opened in STIG Viewer.** The layout comes from DISA's published field names and third-party samples (DECISIONS.md, Checklist formats).
+- Two benchmarks only (Ubuntu 22.04 LTS V2R10 and Windows Server 2022 V2R11). A newer DISA release can be imported with `python -m stigwatch benchmarks import`, but the checks are written against these releases: rules the new release dropped are ignored, and rules it adds are Not Reviewed until a check exists. One release per benchmark is kept; checklists of scans made under an older release carry that release's label and a mismatch notice (DECISIONS.md, Benchmark releases).
 - The Drift and Findings pages load per-host data in the browser, which suits tens of hosts, not hundreds (see DECISIONS.md).
 
 ## Licence and content notice

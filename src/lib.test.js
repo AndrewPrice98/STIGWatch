@@ -202,7 +202,7 @@ test('formatting helpers', () => {
   assert.equal(listWords(['a', 'b', 'c']), 'a, b and c')
 })
 
-// -- Task 10 ---------------------------------------------------------------------------------------
+// -- findings, drift and timeline helpers -------------------------------------------------------
 
 const res = (stig_id, status, cat = 'CAT II', title = `title ${stig_id}`) => ({ stig_id, status, cat, title })
 const H = (id, name, os = 'linux') => ({ id, name, os })

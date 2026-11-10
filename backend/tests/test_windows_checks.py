@@ -579,7 +579,7 @@ def test_collector_runs_on_windows(tmp_path):
     assert len(engine.evaluate(data)) == 277
 
 
-# --------------------------------------------------------------------------- review fix round 1
+# --------------------------------------------------------------------------- domain, encryption and ACL regressions
 
 def test_ms_000010_domain_admins_on_member_server():
     data = load("member-compliant")

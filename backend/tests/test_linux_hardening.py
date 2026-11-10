@@ -246,3 +246,19 @@ def test_wording_does_not_claim_no_hashes_at_all():
     assert "never outputs password hashes" in text
     readme = (BACKEND.parent / "README.md").read_text(encoding="utf-8")
     assert "never outputs password hashes" in readme
+
+
+def test_sshd_line_regex_is_linear():
+    """A 64k-space line must not cost seconds (the old lazy value group backtracked quadratically)."""
+    import time
+
+    from stigwatch.facts import linux
+
+    for line in ("A" + " " * 65536 + "x" + " " * 65536 + "y", "PermitRootLogin" + " " * 65536,
+                 " " * 65536 + "k"):
+        start = time.perf_counter()
+        linux._SSHD_RE.match(line.rstrip())
+        assert time.perf_counter() - start < 0.5
+    m = linux._SSHD_RE.match("  ClientAliveInterval =  300 ".rstrip())
+    assert m and m.groups() == ("ClientAliveInterval", "300")
+    assert linux._SSHD_RE.match("Banner\t/etc/issue.net").groups() == ("Banner", "/etc/issue.net")

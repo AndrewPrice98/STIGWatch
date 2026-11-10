@@ -723,6 +723,10 @@ _SECEDIT_ACCESS = {
     "MaximumPasswordAge", "MinimumPasswordAge", "MinimumPasswordLength", "PasswordComplexity",
     "ClearTextPassword", "EnableGuestAccount", "LSAAnonymousNameLookup",
 }
+# Account-policy values that can stop people or services signing in: a lockout threshold locks
+# accounts with stale saved credentials, a shorter maximum password age expires old passwords at
+# once. Their steps run only with -IncludeAccessChanges.
+_SECEDIT_LOCKOUT = {"LockoutBadCount", "LockoutDuration", "ResetLockoutCount", "MaximumPasswordAge"}
 # Rights whose change can lock administrators out of the host: left to a person.
 _RIGHTS_LOCKOUT = {"SeNetworkLogonRight", "SeInteractiveLogonRight", "SeRemoteInteractiveLogonRight",
                    "SeDenyNetworkLogonRight", "SeDenyInteractiveLogonRight",
@@ -873,8 +877,11 @@ def _windows_steps(sid: str, rule: Rule, leaves: list[Leaf], obs: dict | None = 
                       f"-Guid {_ps_quote(guids[sub])} -Success {s} -Failure {f}"))
     if sec_access:
         body = ", ".join(_ps_quote(line) for line in sorted(sec_access))
-        steps.append((0, "sec", f"    Invoke-StigSecedit -StigId {_ps_quote(sid)} -Area 'SECURITYPOLICY' "
-                      f"-Section 'System Access' -Lines @({body})"))
+        gated = any(line.split(" = ")[0] in _SECEDIT_LOCKOUT for line in sec_access)
+        steps.append((0, "sec", ("    # WARNING: lockout and maximum-password-age settings can deny sign-in; this step runs "
+                                 "only with -IncludeAccessChanges.\n" if gated else "")
+                      + f"    Invoke-StigSecedit -StigId {_ps_quote(sid)} -Area 'SECURITYPOLICY' "
+                      f"-Section 'System Access' -Lines @({body})" + (" -AccessChange" if gated else "")))
     if rights:
         body = ", ".join(_ps_quote(line) for line in sorted(rights))
         steps.append((0, "right", f"    Invoke-StigSecedit -StigId {_ps_quote(sid)} -Area 'USER_RIGHTS' "

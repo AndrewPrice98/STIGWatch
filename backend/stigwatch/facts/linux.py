@@ -374,7 +374,9 @@ SSHD_KEYWORDS = (
     "kexalgorithms", "pubkeyauthentication",
 )
 _SSHD_INT = {"clientalivecountmax", "clientaliveinterval"}
-_SSHD_RE = re.compile(r"^\s*([A-Za-z0-9]+)(?:\s*=\s*|\s+)(.*?)\s*$")
+# Linear on any input: the line is right-stripped first, so the value group needs no trailing
+# \s*, and the separator is either "=" with optional spaces or one run of whitespace.
+_SSHD_RE = re.compile(r"^\s*([A-Za-z0-9]+)(?:[ \t]*=[ \t]*|[ \t]+)(.*)$")
 
 
 SSHD_COLLECTED_GLOB = "/etc/ssh/sshd_config.d/*.conf"
@@ -397,7 +399,7 @@ def p_sshd_config(v: Any) -> dict:
     for path, ln in entries:
         if ln.lstrip().startswith("#"):
             continue
-        m = _SSHD_RE.match(ln)
+        m = _SSHD_RE.match(ln.rstrip())
         if not m:
             continue
         key, val = m.group(1).lower(), m.group(2).strip().strip('"')

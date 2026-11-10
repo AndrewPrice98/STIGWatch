@@ -408,3 +408,15 @@ def test_playbook_lines_stay_within_ansible_lint_limit(benches):
     bench = benches["ubuntu-22.04"]
     text = remediation.ansible_playbook({"name": "h"}, everything_open(bench), bench)
     assert max(len(line) for line in text.splitlines()) <= 155
+
+
+def test_lockout_and_password_age_changes_need_include_access_changes(benches):
+    script = windows_script(benches["windows-server-2022"])
+    gated = [ln for ln in script.splitlines()
+             if "Invoke-StigSecedit" in ln and any(f"'{k} = " in ln for k in
+                                                   ("LockoutBadCount", "ResetLockoutCount", "MaximumPasswordAge"))]
+    assert gated and all(ln.rstrip().endswith("-AccessChange") for ln in gated)
+    # a policy value that cannot deny sign-in stays ungated
+    plain = [ln for ln in script.splitlines() if "Invoke-StigSecedit" in ln and "-Section 'System Access'" in ln
+             and not any(k in ln for k in ("Lockout", "MaximumPasswordAge"))]
+    assert all(not ln.rstrip().endswith("-AccessChange") for ln in plain)

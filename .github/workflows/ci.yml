@@ -235,8 +235,13 @@ jobs:
             echo "== $f"
             ansible-playbook -i localhost, -e stigwatch_target=localhost --syntax-check "$f"
           done
+      # ansible-lint loads each play without extra vars, so the required stigwatch_target is
+      # filled in on a copy (the playbooks themselves keep the required variable).
       - name: ansible-lint
-        run: ansible-lint remediation-out/*.yml
+        run: |
+          mkdir lint-copy
+          for f in remediation-out/*.yml; do sed 's/{{ stigwatch_target }}/localhost/' "$f" > "lint-copy/$(basename "$f")"; done
+          ansible-lint lint-copy/*.yml
 
   frontend:
     # Skipped step by step until the dashboard adds package.json (Task 9). hashFiles() is

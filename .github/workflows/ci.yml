@@ -124,6 +124,28 @@ jobs:
       - name: Scan the Windows PowerShell 5.1 output
         working-directory: backend
         run: python -m stigwatch scan ../out-ps51.json
+      - name: Summarise the outputs as annotations
+        if: always()
+        working-directory: backend
+        shell: python
+        run: |
+          import json, os, sys
+          sys.path.insert(0, os.getcwd())
+          from stigwatch.checks import engine
+          from stigwatch.facts import windows
+          for name in ("pwsh", "ps51"):
+              path = os.path.join("..", f"out-{name}.json")
+              if not os.path.exists(path):
+                  print(f"::warning title=windows collector {name}::no output file")
+                  continue
+              data = json.load(open(path, encoding="utf-8"))
+              info = windows.summary(data)
+              counts = engine.status_counts(engine.evaluate(data))
+              lines = [f"PowerShell {data.get('powershell')}, privileged {data.get('privileged')}: "
+                       f"{info['ok']} of {info['facts']} facts read",
+                       "scan: " + ", ".join(f"{k} {v}" for k, v in counts.items())]
+              lines += [f"unavailable {k}: {v}" for k, v in sorted(info["unavailable"].items())]
+              print(f"::notice title=windows collector {name}::" + "%0A".join(lines))
       - name: Keep the collector output
         if: always()
         uses: actions/upload-artifact@v4

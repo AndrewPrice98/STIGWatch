@@ -81,9 +81,11 @@ jobs:
           sudo sh collectors/collect-linux.sh
           sudo chown "$(id -u):$(id -g)" stigwatch-linux-*.json
           mv stigwatch-linux-*.json out.json
-      - name: Validate the root output (collect-parse linux out.json --min-ok 40)
+      - name: Validate the root output (collect-parse linux out.json --min-ok 40 --require ...)
         working-directory: backend
-        run: python -m stigwatch collect-parse linux ../out.json --min-ok 40
+        run: >-
+          python -m stigwatch collect-parse linux ../out.json --min-ok 40
+          --require sshd_config,packages,units,login_defs,shadow,audit_rules,sysctl_runtime
       - name: Validate the normal-user output
         working-directory: backend
         run: python -m stigwatch collect-parse linux ../out-user.json --min-ok 30

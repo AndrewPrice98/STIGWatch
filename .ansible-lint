@@ -5,5 +5,4 @@ skip_list:
   - command-instead-of-module
 exclude_paths:
   - .github/
-  - frontend/
   - node_modules/

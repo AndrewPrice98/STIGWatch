@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 import sys
@@ -11,7 +12,9 @@ from stigwatch import benchmarks as bm
 from stigwatch.__main__ import main
 
 BACKEND = Path(__file__).resolve().parent.parent
-SOURCES = Path(r"D:\Projects\_plans\security-five\sdd\stigwatch\sources")
+# Optional folder holding the DISA source zips (ubuntu.zip, win.zip); see DECISIONS.md.
+_SOURCES_ENV = os.environ.get("STIGWATCH_SOURCES_DIR", "")
+SOURCES = Path(_SOURCES_ENV) if _SOURCES_ENV else None
 
 EXPECTED = {
     "ubuntu-22.04": ("2", "10", "2026-09-30", 191, (16, 158, 17)),
@@ -104,7 +107,10 @@ def test_unknown_or_hostile_id():
             bm.load_benchmark(bad)
 
 
-@pytest.mark.skipif(not (SOURCES / "ubuntu.zip").exists(), reason="official zips not present")
+@pytest.mark.skipif(
+    SOURCES is None or not (SOURCES / "ubuntu.zip").exists() or not (SOURCES / "win.zip").exists(),
+    reason="set STIGWATCH_SOURCES_DIR to a folder holding the DISA source zips ubuntu.zip and win.zip",
+)
 @pytest.mark.parametrize(
     "zipname,bid", [("ubuntu.zip", "ubuntu-22.04"), ("win.zip", "windows-server-2022")]
 )

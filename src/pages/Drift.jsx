@@ -7,7 +7,7 @@ import {
 } from '../components/ui.jsx'
 import { loadHostScans, mapLimit } from '../data.js'
 import {
-  CATS, DRIFT_KINDS, alertFrom, buildTimeline, defaultWeek, describeDelta, formatDate, mergeDrift, plural,
+  CATS, DRIFT_KINDS, alertFrom, buildTimeline, defaultWeek, describeDelta, formatDate, lostByScan, mergeDrift, plural,
 } from '../lib.js'
 
 const ruleLink = (hostId, stigId) => `/hosts/${hostId}/rules/${encodeURIComponent(stigId)}`
@@ -99,13 +99,14 @@ function Timeline({ weeks, selected }) {
   )
 }
 
-function Change({ value }) {
-  const d = describeDelta(value)
+function Change({ value, lost = 0 }) {
+  const d = describeDelta(value, lost)
   return d ? <span className={`delta-inline ${d.tone}`}><span aria-hidden="true">{d.arrow} {value > 0 ? `+${value}` : value}</span><span className="sr-only">{d.text}</span></span> : null
 }
 
 function WeekDetail({ week }) {
   const { data, error, loading, reload } = useAsync(() => loadWeek(week), [week.week])
+  const lostFor = useMemo(() => lostByScan(data?.merged), [data])
   return (
     <section className="card" id="week" aria-labelledby="week-title">
       <div className="card-head">
@@ -114,7 +115,7 @@ function WeekDetail({ week }) {
           <p className="muted small">
             {plural(week.scans.length, 'scan')} collected. Each is compared by STIG ID with the same host&apos;s previous scan.
             {week.change && <> Fleet open findings vs the week before:{' '}
-              {CATS.map((c) => <span key={c} className="wk-change">{c} <Change value={week.change[c]} /></span>)}</>}
+              {CATS.map((c) => <span key={c} className="wk-change">{c} <Change value={week.change[c]} lost={week.lost?.[c] ?? 0} /></span>)}</>}
           </p>
         </div>
       </div>
@@ -132,7 +133,7 @@ function WeekDetail({ week }) {
                 <tr key={s.id}>
                   <th scope="row"><Link className="host-link" to={`/hosts/${s.host_id}?scan=${s.id}#drift`}>{s.host_name}</Link></th>
                   {s.change
-                    ? CATS.map((c) => <td key={c} data-label={c} className="num"><Change value={s.change[c]} />{s.change[c] === 0 && <span className="muted">0</span>}</td>)
+                    ? CATS.map((c) => <td key={c} data-label={c} className="num"><Change value={s.change[c]} lost={lostFor.get(s.id)?.[c] ?? 0} />{s.change[c] === 0 && <span className="muted">0</span>}</td>)
                     : <td colSpan={3} className="muted">First scan of this host</td>}
                 </tr>
               ))}

@@ -154,7 +154,7 @@ flowchart LR
 
 ## Tests and CI
 
-Real counts at the time of writing: **332 backend tests** (pytest, including the Vercel entry-point tests), **27 frontend unit tests** (`node --test`) and a small Playwright smoke test (`e2e/`: guests are read-only; a rule that lost visibility is never shown as fixed).
+Real counts at the time of writing: **336 backend tests collected** (332 passed and 4 platform-specific skips; pytest, including the Vercel entry-point tests; two more benchmark-rebuild tests run only when `STIGWATCH_SOURCES_DIR` is set, see `DECISIONS.md`), **29 frontend unit tests** (`node --test`) and a small Playwright smoke test (`e2e/`: guests are read-only; a rule that lost visibility is never shown as fixed).
 
 ```sh
 cd backend && python -m pytest -q -rs     # -rs names skipped tests

@@ -399,6 +399,8 @@ export function buildTimeline(trend, hostScans, alerts) {
   const weeks = trend.map((t, i) => ({
     week: t.week, n: i + 1, open: t.open, hosts: t.hosts, scans: [], alerts: [],
     change: i === 0 ? null : catChange(t.open, trend[i - 1].open),
+    // Open -> Not_Reviewed findings in this week, per CAT (not fixed, only no longer visible).
+    lost: Object.fromEntries(CATS.map((c) => [c, t.lost_visibility?.[c] ?? 0])),
   }))
   const byWeek = new Map(weeks.map((w) => [w.week, w]))
   for (const { host, scans } of hostScans) {
@@ -463,6 +465,20 @@ export function mergeDrift(drifts) {
   const catIndex = (c) => { const i = CATS.indexOf(c); return i === -1 ? 9 : i }
   for (const k of DRIFT_KINDS) {
     out[k.id].sort((a, b) => catIndex(a.cat) - catIndex(b.cat) || a.host_name.localeCompare(b.host_name) || a.stig_id.localeCompare(b.stig_id))
+  }
+  return out
+}
+
+/**
+ * Per-scan lost-visibility counts by CAT, from the merged drift of a week: Map(scan_id -> {cat: n}).
+ * Feeds the per-host "Net change" so a decrease that includes lost visibility is not shown as good.
+ */
+export function lostByScan(merged) {
+  const out = new Map()
+  for (const r of merged?.lost_visibility ?? []) {
+    const row = out.get(r.scan_id) ?? Object.fromEntries(CATS.map((c) => [c, 0]))
+    if (r.cat in row) row[r.cat] += 1
+    out.set(r.scan_id, row)
   }
   return out
 }

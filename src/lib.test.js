@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  DISCLAIMER, alertFrom, asyncView, buildTimeline, catBreakdown, defaultWeek, describeDelta, environments,
+  DISCLAIMER, alertFrom, asyncView, buildTimeline, catBreakdown, defaultWeek, describeDelta, environments, lostByScan,
   filterFindings, filterHosts, filterResults, formatBytes, formatDate, formatPct, groupFindings, hostsAtRisk,
   listWords, mergeDrift, niceMax, notReviewedCount, ranUnprivileged, regressionStory, sortHosts, sortHostsByRisk,
   sortResults, splitStigText, weekDelta, weekOf, weekStart, writeErrorMessage,
@@ -370,4 +370,32 @@ test('write errors are explained for the cases an admin can hit', () => {
   assert.match(writeErrorMessage(e(0)), /Cannot reach/)
   assert.equal(formatBytes(2048), '2.0 KB')
   assert.equal(formatBytes(12), '12 B')
+})
+
+test('drift timeline: a week decrease that includes lost visibility is neutral, per week and per host', () => {
+  const trend = [
+    { week: '2026-10-26', hosts: 1, open: { 'CAT I': 0, 'CAT II': 5, 'CAT III': 2 }, lost_visibility: { 'CAT I': 0, 'CAT II': 0, 'CAT III': 0 } },
+    { week: '2026-11-02', hosts: 1, open: { 'CAT I': 0, 'CAT II': 2, 'CAT III': 1 }, lost_visibility: { 'CAT I': 0, 'CAT II': 2, 'CAT III': 0 } },
+  ]
+  const weeks = buildTimeline(trend, [], [])
+  assert.deepEqual(weeks[1].lost, { 'CAT I': 0, 'CAT II': 2, 'CAT III': 0 })
+  const lost = weeks[1].lost['CAT II']
+  const shown = describeDelta(weeks[1].change['CAT II'], lost)
+  assert.equal(shown.tone, 'neutral')
+  assert.match(shown.text, /2 lost visibility/)
+  assert.equal(describeDelta(weeks[1].change['CAT III'], weeks[1].lost['CAT III']).tone, 'good', 'a real decrease stays good')
+  // Trend rows from an older API without lost_visibility count as zero.
+  assert.deepEqual(buildTimeline([{ week: '2026-11-02', open: {} }], [], [])[0].lost, { 'CAT I': 0, 'CAT II': 0, 'CAT III': 0 })
+})
+
+test('lostByScan counts lost-visibility rules per scan and CAT for the per-host net change', () => {
+  const merged = { lost_visibility: [
+    { scan_id: 7, cat: 'CAT II', stig_id: 'A' }, { scan_id: 7, cat: 'CAT II', stig_id: 'B' }, { scan_id: 8, cat: 'CAT I', stig_id: 'C' },
+  ] }
+  const m = lostByScan(merged)
+  assert.deepEqual(m.get(7), { 'CAT I': 0, 'CAT II': 2, 'CAT III': 0 })
+  assert.equal(m.get(8)['CAT I'], 1)
+  assert.equal(m.get(9), undefined)
+  assert.equal(describeDelta(-2, m.get(7)['CAT II']).tone, 'neutral')
+  assert.equal(lostByScan(null).size, 0)
 })

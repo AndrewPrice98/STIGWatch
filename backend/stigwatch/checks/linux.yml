@@ -1,0 +1,1078 @@
+# Automated checks for the Canonical Ubuntu 22.04 LTS STIG (benchmark ubuntu-22.04).
+#
+# Each check implements the rule's DISA check text over facts gathered by
+# collectors/collect-linux.sh and normalised by stigwatch/facts/linux.py.
+#
+#   facts            fact ids the check reads (paths must start with one of them)
+#   logic            true -> result_if_true (default NotAFinding)
+#   result_if_false  when logic is false and there is no unmet_if (default Open)
+#   unmet_if         when logic is false: true -> result_if_false, otherwise Not_Reviewed
+#   na_if            true -> Not_Applicable; must be proved by a gathered fact
+#   observe          extra paths shown as evidence
+#   rationale        one line shown with the result
+#
+# Leaf conditions: {path, eq|ne|ge|le|gt|lt|in|not_in|subset|contains|nonempty|empty|unset|
+# matches|perm_le|audit, quant?}. A path is a dotted string or a list of keys (use the list
+# form when a key contains a dot, e.g. [sysctl_runtime, kernel.dmesg_restrict]).
+#
+# House rules (see DECISIONS.md, "Ubuntu checks"):
+# - NotAFinding only when the facts satisfy every clause of the check text.
+# - "Unless documented with the ISSO" exceptions are reported Open; the rationale says so and
+#   the assessor may record the documentation.
+# - Where the check text needs a judgement the host cannot supply (who needs sudo, whether a
+#   time server is authoritative) the check is partial: it returns the outcome the facts
+#   can prove and Not_Reviewed otherwise.
+
+collector: linux
+benchmark: ubuntu-22.04
+
+checks:
+  # ------------------------------------------------------------------ CAT I
+  - stig_id: UBTU-22-211015
+    facts: [units]
+    logic: {path: [units, ctrl-alt-del.target, load], eq: masked}
+    rationale: The ctrl-alt-del.target unit must be masked so Ctrl-Alt-Delete cannot reboot the system.
+
+  - stig_id: UBTU-22-212010
+    facts: [grub_cfg]
+    logic:
+      all:
+        - {path: grub_cfg.pbkdf2_entries, ge: 1}
+        - {path: grub_cfg.plain_password_entries, eq: 0}
+    rationale: The boot loader password entry in /boot/grub/grub.cfg must be a password_pbkdf2 hash (only counts are collected, never the hash).
+
+  - stig_id: UBTU-22-215030
+    facts: [packages]
+    logic: {path: [packages, rsh-server, installed], eq: false}
+    rationale: The rsh-server package must not be installed.
+
+  - stig_id: UBTU-22-215035
+    facts: [packages]
+    logic: {path: [packages, telnetd, installed], eq: false}
+    rationale: The telnetd package must not be installed.
+
+  - stig_id: UBTU-22-231010
+    facts: [block_devices]
+    observe: [block_devices.unencrypted_mounts, block_devices.unverified_partitions]
+    logic:
+      all:
+        - {path: block_devices.mounts, ge: 1}
+        - {path: block_devices.unencrypted_count, eq: 0}
+        - {path: block_devices.unverified_count, eq: 0}
+    unmet_if: {path: block_devices.unencrypted_count, ge: 1}
+    rationale: Every persistent filesystem and swap other than /boot must sit on an encrypted (dm-crypt) device; a documented and approved exception makes the rule not applicable, which the assessor records.
+
+  - stig_id: UBTU-22-255010
+    facts: [packages]
+    logic: {path: [packages, openssh-server, installed], eq: true}
+    rationale: The OpenSSH server package must be installed.
+
+  - stig_id: UBTU-22-255015
+    facts: [units]
+    logic:
+      all:
+        - {path: [units, ssh.service, file], eq: enabled}
+        - {path: [units, ssh.service, active], eq: active}
+    rationale: ssh.service must be enabled and active.
+
+  - stig_id: UBTU-22-255025
+    facts: [sshd_config]
+    observe: [sshd_config.permitemptypasswords.occurrences, sshd_config.permituserenvironment.occurrences]
+    logic:
+      all:
+        - {path: sshd_config.permitemptypasswords.value, eq: "no"}
+        - {path: sshd_config.permituserenvironment.value, eq: "no"}
+    rationale: PermitEmptyPasswords and PermitUserEnvironment must be explicitly set to "no" in the sshd configuration files, without conflicting values; missing or commented out is a finding.
+
+  - stig_id: UBTU-22-255040
+    facts: [sshd_config]
+    observe: [sshd_config.x11forwarding.occurrences]
+    logic: {path: sshd_config.x11forwarding.value, eq: "no"}
+    rationale: X11Forwarding must be explicitly "no"; "yes" is a finding unless documented with the ISSO as an operational requirement.
+
+  - stig_id: UBTU-22-271030
+    facts: [gui, gsettings]
+    na_if: {path: gui.installed, eq: false}
+    logic: {path: gsettings.logout, empty: true}
+    rationale: With a GUI installed, the GNOME media-keys logout binding (Ctrl-Alt-Delete) must be an empty list.
+
+  - stig_id: UBTU-22-432015
+    facts: [group_sudo]
+    observe: [group_sudo.members]
+    logic: {path: group_sudo.count, eq: 0}
+    result_if_false: Not_Reviewed
+    rationale: Whether each sudo group member needs access to security functions is an organisational judgement; an empty sudo group is not a finding, otherwise the listed members need review.
+
+  - stig_id: UBTU-22-611060
+    facts: [pam_common_auth, pam_common_password]
+    logic:
+      all:
+        - {path: pam_common_auth.nullok, eq: 0}
+        - {path: pam_common_password.nullok, eq: 0}
+    rationale: No active line of common-auth or common-password may carry the nullok option.
+
+  - stig_id: UBTU-22-611065
+    facts: [shadow]
+    logic: {path: shadow.empty_password, eq: 0}
+    rationale: No account in /etc/shadow may have an empty password field (the collector reports a count only).
+
+  - stig_id: UBTU-22-612040
+    facts: [pam_pkcs11_conf]
+    logic: {path: pam_pkcs11_conf.use_mappers, contains: pwent}
+    rationale: use_mappers in /etc/pam_pkcs11/pam_pkcs11.conf must include pwent; a missing file or setting is a finding.
+
+  - stig_id: UBTU-22-671010
+    facts: [sysctl_runtime, proc_cmdline]
+    observe: [proc_cmdline.fips]
+    logic: {path: [sysctl_runtime, crypto.fips_enabled], eq: 1}
+    rationale: /proc/sys/crypto/fips_enabled must read 1; a kernel without the file is not in FIPS mode.
+
+  - stig_id: UBTU-22-211000
+    facts: [release_support, os_release]
+    observe: [os_release.pretty_name]
+    logic: {path: release_support.within_standard_support, eq: true}
+    result_if_false: Not_Reviewed
+    rationale: Ubuntu 22.04 is in Canonical's standard support until May 2027; after that, support depends on Ubuntu Pro ESM, which needs a manual check.
+
+  # ------------------------------------------------------------------ boot and kernel
+  - stig_id: UBTU-22-212015
+    facts: [default_grub, grub_cfg, proc_cmdline]
+    observe: [proc_cmdline.audit]
+    logic:
+      all:
+        - {path: default_grub.lines, ge: 1}
+        - {path: default_grub.missing_audit, eq: 0}
+        - {path: grub_cfg.linux_lines, ge: 1}
+        - {path: grub_cfg.linux_lines_missing_audit, eq: 0}
+    rationale: Every GRUB_CMDLINE_LINUX line in /etc/default/grub and every linux line in grub.cfg must contain audit=1.
+
+  - stig_id: UBTU-22-213010
+    facts: [sysctl_runtime, sysctl_saved]
+    observe: [[sysctl_saved, kernel.dmesg_restrict, values]]
+    logic:
+      all:
+        - {path: [sysctl_runtime, kernel.dmesg_restrict], eq: 1}
+        - {path: [sysctl_saved, kernel.dmesg_restrict, value], eq: 1}
+    rationale: kernel.dmesg_restrict must be 1 at runtime and saved as 1 in the sysctl configuration without conflicting values.
+
+  - stig_id: UBTU-22-213015
+    facts: [units]
+    logic: {path: [units, kdump-tools.service, active], ne: active}
+    rationale: kdump-tools must not be active; an active service is a finding unless its use is documented with the ISSO.
+
+  - stig_id: UBTU-22-213020
+    facts: [sysctl_runtime, sysctl_saved]
+    logic:
+      all:
+        - {path: [sysctl_runtime, kernel.randomize_va_space], eq: 2}
+        - {path: [sysctl_saved, kernel.randomize_va_space, values], subset: [2]}
+    rationale: kernel.randomize_va_space must be 2 and no saved setting may give another value.
+
+  - stig_id: UBTU-22-213025
+    facts: [dmesg_nx, cpu_flags]
+    logic:
+      any:
+        - {path: dmesg_nx.active, eq: true}
+        - {path: cpu_flags.nx, eq: true}
+    unmet_if: {path: cpu_flags.nx, eq: false}
+    rationale: NX protection must be reported active by the kernel or the CPU must have the nx flag.
+
+  - stig_id: UBTU-22-253010
+    facts: [sysctl_runtime, sysctl_saved]
+    logic:
+      all:
+        - {path: [sysctl_runtime, net.ipv4.tcp_syncookies], eq: 1}
+        - {path: [sysctl_saved, net.ipv4.tcp_syncookies, value], eq: 1}
+    rationale: net.ipv4.tcp_syncookies must be 1 at runtime and saved as 1 without conflicting values.
+
+  - stig_id: UBTU-22-291010
+    facts: [modprobe_usb]
+    logic:
+      all:
+        - {path: modprobe_usb.install_false, eq: true}
+        - {path: modprobe_usb.blacklist, eq: true}
+    rationale: /etc/modprobe.d must contain both "install usb-storage /bin/false" and "blacklist usb-storage".
+
+  - stig_id: UBTU-22-291015
+    facts: [wireless]
+    logic: {path: wireless.count, eq: 0}
+    rationale: No wireless interfaces may be listed in /proc/net/wireless unless documented and approved by the ISSO.
+
+  # ------------------------------------------------------------------ packages and services
+  - stig_id: UBTU-22-214010
+    facts: [apt_conf]
+    logic: {path: apt_conf.allow_unauthenticated.value, eq: "false"}
+    rationale: APT::Get::AllowUnauthenticated must be explicitly "false" in /etc/apt/apt.conf.d; missing is a finding.
+
+  - stig_id: UBTU-22-214015
+    facts: [apt_conf]
+    logic:
+      all:
+        - {path: apt_conf.remove_unused_kernel_packages.value, eq: "true"}
+        - {path: apt_conf.remove_unused_dependencies.value, eq: "true"}
+    rationale: Remove-Unused-Kernel-Packages and Remove-Unused-Dependencies must be "true" in 50unattended-upgrades.
+
+  - stig_id: UBTU-22-215010
+    facts: [packages]
+    logic: {path: [packages, libpam-pwquality, installed], eq: true}
+    rationale: The libpam-pwquality package must be installed.
+
+  - stig_id: UBTU-22-215015
+    facts: [packages]
+    logic: {path: [packages, chrony, installed], eq: true}
+    rationale: The chrony package must be installed.
+
+  - stig_id: UBTU-22-215020
+    facts: [packages]
+    logic: {path: [packages, systemd-timesyncd, installed], eq: false}
+    rationale: The systemd-timesyncd package must not be installed.
+
+  - stig_id: UBTU-22-215025
+    facts: [packages]
+    logic: {path: [packages, ntp, installed], eq: false}
+    rationale: The ntp package must not be installed.
+
+  - stig_id: UBTU-22-215040
+    facts: [packages]
+    logic: {path: [packages, nfs-kernel-server, installed], eq: false}
+    rationale: The nfs-kernel-server package must not be installed; if NFS is authorised and in use the rule is not applicable, which the assessor records.
+
+  - stig_id: UBTU-22-412025
+    facts: [packages]
+    logic: {path: [packages, vlock, installed], eq: true}
+    rationale: The vlock package must be installed so users can lock their sessions.
+
+  - stig_id: UBTU-22-431010
+    facts: [packages]
+    logic: {path: [packages, apparmor, installed], eq: true}
+    rationale: The apparmor package must be installed.
+
+  - stig_id: UBTU-22-431015
+    facts: [units, apparmor_status]
+    logic:
+      all:
+        - {path: [units, apparmor.service, file], eq: enabled}
+        - {path: [units, apparmor.service, active], eq: active}
+        - {path: apparmor_status.loaded, ge: 1}
+        - {path: apparmor_status.enforce, ge: 1}
+    rationale: apparmor.service must be enabled and active with profiles loaded and in enforce mode.
+
+  - stig_id: UBTU-22-612010
+    facts: [packages]
+    logic: {path: [packages, libpam-pkcs11, installed], eq: true}
+    rationale: The libpam-pkcs11 package must be installed.
+
+  - stig_id: UBTU-22-612015
+    facts: [packages]
+    logic: {path: [packages, opensc-pkcs11, installed], eq: true}
+    rationale: The opensc-pkcs11 package must be installed.
+
+  - stig_id: UBTU-22-612020
+    facts: [pam_common_auth, sshd_config]
+    logic:
+      all:
+        - {path: pam_common_auth.pkcs11, eq: true}
+        - {path: sshd_config.pubkeyauthentication.value, eq: "yes"}
+    rationale: pam_pkcs11.so must be active in common-auth and PubkeyAuthentication explicitly "yes" without conflicting values.
+
+  - stig_id: UBTU-22-652010
+    facts: [packages, units]
+    logic:
+      all:
+        - {path: [packages, rsyslog, installed], eq: true}
+        - {path: [units, rsyslog.service, file], eq: enabled}
+        - {path: [units, rsyslog.service, active], eq: active}
+    rationale: rsyslog must be installed and rsyslog.service enabled and active.
+
+  - stig_id: UBTU-22-653010
+    facts: [packages]
+    logic: {path: [packages, auditd, installed], eq: true}
+    rationale: The auditd package must be installed.
+
+  - stig_id: UBTU-22-653015
+    facts: [units]
+    logic:
+      all:
+        - {path: [units, auditd.service, file], eq: enabled}
+        - {path: [units, auditd.service, active], eq: active}
+    rationale: auditd.service must be enabled and active.
+
+  - stig_id: UBTU-22-651010
+    facts: [packages]
+    logic: {path: [packages, aide, installed], eq: true}
+    result_if_false: Not_Reviewed
+    rationale: AIDE is installed; without it, the administrator must show another file integrity tool, so its absence alone is not a finding.
+
+  - stig_id: UBTU-22-651025
+    facts: [aide_cron]
+    observe: [aide_cron.scripts]
+    logic: {path: aide_cron.default, eq: true}
+    rationale: An AIDE script must exist in /etc/cron.daily or /etc/cron.monthly and match the SHA-1 of the packaged original (verified on the host against the dpkg md5sums instead of downloading the package).
+
+  - stig_id: UBTU-22-651030
+    facts: [aide_conf]
+    logic: {path: aide_conf.missing_tools, empty: true}
+    rationale: /etc/aide/aide.conf must protect auditctl, auditd, ausearch, aureport, autrace and augenrules with p+i+n+u+g+s+b+acl+xattrs+sha512.
+
+  - stig_id: UBTU-22-251010
+    facts: [packages]
+    logic: {path: [packages, ufw, installed], eq: true}
+    result_if_false: Not_Reviewed
+    rationale: ufw is installed; without it, the administrator must show another application firewall, so its absence alone is not a finding.
+
+  - stig_id: UBTU-22-251015
+    facts: [ufw_status]
+    logic: {path: ufw_status.status, eq: active}
+    rationale: ufw status must report active; inactive, an error or ufw not installed is a finding.
+
+  - stig_id: UBTU-22-251020
+    facts: [ufw_status]
+    logic: {path: ufw_status.status, eq: active}
+    unmet_if: {path: ufw_status.status, eq: inactive}
+    rationale: An application firewall must be active; inactive ufw is a finding, and without ufw another active firewall may satisfy the rule, which needs a manual check.
+
+  # ------------------------------------------------------------------ time
+  - stig_id: UBTU-22-252010
+    facts: [chrony_conf]
+    observe: [chrony_conf.sources]
+    logic:
+      all:
+        - {path: chrony_conf.source_count, ge: 1}
+        - {path: chrony_conf.sources_without_maxpoll, eq: 0}
+        - {path: chrony_conf.max_maxpoll, le: 16}
+    result_if_true: Not_Reviewed
+    rationale: Every chrony server line needs maxpoll 16 or less; whether the servers are authoritative DoD time sources cannot be determined from the host and needs manual review.
+
+  - stig_id: UBTU-22-252015
+    facts: [chrony_conf, timedatectl]
+    logic:
+      all:
+        - {path: chrony_conf.makestep.value, eq: "1 -1"}
+        - {path: timedatectl.ntp, eq: "yes"}
+        - {path: timedatectl.synchronized, eq: "yes"}
+    rationale: chrony makestep must be "1 -1", the NTP service active and the clock synchronized.
+
+  - stig_id: UBTU-22-252020
+    facts: [timedatectl]
+    logic: {path: timedatectl.timezone, in: [UTC, Etc/UTC, Universal, Etc/Universal, Zulu, Etc/Zulu]}
+    rationale: The time zone must be UTC (tzdata aliases of UTC are accepted).
+
+  # ------------------------------------------------------------------ SSH
+  - stig_id: UBTU-22-255020
+    facts: [sshd_config, ssh_banner]
+    observe: [sshd_config.banner.occurrences]
+    logic:
+      all:
+        - {path: sshd_config.banner.value, nonempty: true}
+        - {path: sshd_config.banner.value, ne: none}
+        - {path: ssh_banner.matches_dod_banner, eq: true}
+    rationale: The sshd Banner directive must name a file whose text matches the Standard Mandatory DoD Notice and Consent Banner (whitespace differences ignored).
+
+  - stig_id: UBTU-22-255030
+    facts: [sshd_config]
+    logic: {path: sshd_config.clientalivecountmax.value, eq: 1}
+    rationale: ClientAliveCountMax must be explicitly 1 without conflicting values.
+
+  - stig_id: UBTU-22-255035
+    facts: [sshd_config]
+    logic:
+      all:
+        - {path: sshd_config.clientaliveinterval.value, ge: 1}
+        - {path: sshd_config.clientaliveinterval.value, le: 600}
+    unmet_if:
+      any:
+        - {path: sshd_config.clientaliveinterval.value, unset: true}
+        - {path: sshd_config.clientaliveinterval.value, gt: 600}
+    rationale: ClientAliveInterval must be explicitly set to 600 or less; 0 disables the timeout and is left for review.
+
+  - stig_id: UBTU-22-255045
+    facts: [sshd_config]
+    logic: {path: sshd_config.x11uselocalhost.value, eq: "yes"}
+    rationale: X11UseLocalhost must be explicitly "yes" without conflicting values.
+
+  - stig_id: UBTU-22-255050
+    facts: [sshd_config]
+    logic:
+      all:
+        - {path: sshd_config.ciphers.list, nonempty: true}
+        - {path: sshd_config.ciphers.list, subset: [aes256-ctr, aes256-gcm@openssh.com, aes128-ctr, aes128-gcm@openssh.com]}
+    rationale: Ciphers must be explicitly set and contain only aes256-ctr, aes256-gcm@openssh.com, aes128-ctr and aes128-gcm@openssh.com.
+
+  - stig_id: UBTU-22-255055
+    facts: [sshd_config]
+    logic: {path: sshd_config.macs.value, eq: "hmac-sha2-512,hmac-sha2-512-etm@openssh.com,hmac-sha2-256,hmac-sha2-256-etm@openssh.com"}
+    rationale: MACs must be exactly hmac-sha2-512,hmac-sha2-512-etm@openssh.com,hmac-sha2-256,hmac-sha2-256-etm@openssh.com in that order.
+
+  - stig_id: UBTU-22-255060
+    facts: [sshd_config]
+    logic: {path: sshd_config.kexalgorithms.value, eq: "ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256"}
+    rationale: KexAlgorithms must be exactly ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256 in that order.
+
+  # ------------------------------------------------------------------ GUI
+  - stig_id: UBTU-22-271010
+    facts: [gui, gdm_greeter]
+    na_if: {path: gui.installed, eq: false}
+    logic: {path: gdm_greeter.banner_enable, eq: true}
+    rationale: With a GUI installed, banner-message-enable must be true in /etc/gdm3/greeter.dconf-defaults.
+
+  - stig_id: UBTU-22-271015
+    facts: [gui, gdm_greeter]
+    na_if: {path: gui.installed, eq: false}
+    logic: {path: gdm_greeter.banner_text_matches, eq: true}
+    rationale: With a GUI installed, banner-message-text must match the Standard Mandatory DoD Notice and Consent Banner (whitespace differences ignored).
+
+  - stig_id: UBTU-22-271020
+    facts: [gui, gsettings]
+    na_if: {path: gui.installed, eq: false}
+    logic: {path: gsettings.lock_enabled, eq: true}
+    rationale: With a GUI installed, org.gnome.desktop.screensaver lock-enabled must be true.
+
+  - stig_id: UBTU-22-271025
+    facts: [gui, gsettings]
+    na_if: {path: gui.installed, eq: false}
+    logic:
+      all:
+        - {path: gsettings.lock_enabled, eq: true}
+        - {path: gsettings.lock_delay, eq: 0}
+        - {path: gsettings.idle_delay, le: 600}
+    rationale: With a GUI installed, the screen must lock immediately (lock-delay 0) after at most 600 seconds idle.
+
+  # ------------------------------------------------------------------ accounts and login
+  - stig_id: UBTU-22-411010
+    facts: [root_password_status]
+    logic: {path: root_password_status.locked, eq: true}
+    rationale: passwd -S root must show the root account locked (L).
+
+  - stig_id: UBTU-22-411015
+    facts: [passwd_accounts]
+    observe: [passwd_accounts.duplicate_uid_accounts]
+    logic: {path: passwd_accounts.duplicate_uid_interactive, empty: true}
+    rationale: No interactive accounts (shell other than nologin or false) may share a UID.
+
+  - stig_id: UBTU-22-411025
+    facts: [login_defs]
+    logic: {path: login_defs.PASS_MIN_DAYS, ge: 1}
+    rationale: PASS_MIN_DAYS in /etc/login.defs must be 1 or more.
+
+  - stig_id: UBTU-22-411030
+    facts: [login_defs]
+    logic: {path: login_defs.PASS_MAX_DAYS, eq: 180}
+    unmet_if: {path: login_defs.PASS_MAX_DAYS, unset: true}
+    rationale: The check text flags PASS_MAX_DAYS "less than 180" while the title requires a 180-day maximum; only 180 satisfies both readings, missing is a finding, and any other value is left for review.
+
+  - stig_id: UBTU-22-411035
+    facts: [useradd_defaults]
+    logic: {path: useradd_defaults.INACTIVE, eq: 35}
+    unmet_if:
+      any:
+        - {path: useradd_defaults.INACTIVE, unset: true}
+        - {path: useradd_defaults.INACTIVE, lt: 0}
+        - {path: useradd_defaults.INACTIVE, gt: 35}
+    rationale: INACTIVE in /etc/default/useradd must be 35; -1, missing or a longer period is a finding, and a shorter period (which the check text also flags) is left for review.
+
+  - stig_id: UBTU-22-411045
+    facts: [pam_common_auth, faillock_conf]
+    logic:
+      all:
+        - {path: pam_common_auth.faillock, eq: true}
+        - {path: faillock_conf.audit, eq: true}
+        - {path: faillock_conf.silent, eq: true}
+        - {path: faillock_conf.deny, ge: 1}
+        - {path: faillock_conf.deny, le: 3}
+        - {path: faillock_conf.fail_interval, le: 900}
+        - {path: faillock_conf.unlock_time, eq: 0}
+    unmet_if:
+      any:
+        - {path: pam_common_auth.faillock, eq: false}
+        - {path: faillock_conf.audit, eq: false}
+        - {path: faillock_conf.silent, eq: false}
+        - {path: faillock_conf.deny, unset: true}
+        - {path: faillock_conf.deny, gt: 3}
+        - {path: faillock_conf.fail_interval, unset: true}
+        - {path: faillock_conf.fail_interval, gt: 900}
+        - {path: faillock_conf.unlock_time, unset: true}
+        - {path: faillock_conf.unlock_time, ne: 0}
+    rationale: pam_faillock must be in common-auth and faillock.conf must set audit, silent, deny 1 to 3, fail_interval 900 or less and unlock_time 0; deny 0 (not flagged by the check text but no lockout threshold) is left for review.
+
+  - stig_id: UBTU-22-412010
+    facts: [pam_common_auth]
+    logic: {path: pam_common_auth.faildelay_delay, ge: 4000000}
+    rationale: pam_faildelay in common-auth must set delay to 4000000 microseconds or more.
+
+  - stig_id: UBTU-22-412020
+    facts: [limits]
+    observe: [limits.entries]
+    logic: {path: limits.all_users_limit, le: 10}
+    unmet_if:
+      any:
+        - {path: limits.count, eq: 0}
+        - {path: limits.min_value, gt: 10}
+    rationale: A hard maxlogins limit of 10 or less must apply to all accounts (*); limits only for some accounts are left for review.
+
+  - stig_id: UBTU-22-412030
+    facts: [shell_tmout]
+    logic:
+      all:
+        - {path: shell_tmout.count, ge: 1}
+        - {path: shell_tmout.min, ge: 1}
+        - {path: shell_tmout.max, le: 900}
+    rationale: TMOUT must be set to between 1 and 900 seconds in /etc/bash.bashrc or /etc/profile.d.
+
+  - stig_id: UBTU-22-412035
+    facts: [login_defs]
+    logic: {path: login_defs.UMASK, eq: "077"}
+    rationale: UMASK in /etc/login.defs must be 077 (000 is a finding raised to CAT I).
+
+  - stig_id: UBTU-22-412040
+    facts: [passwd_accounts]
+    logic: {path: passwd_accounts.system_interactive, empty: true}
+    rationale: No system account (UID 1-999 other than halt, sync and shutdown) may have an interactive login shell.
+
+  - stig_id: UBTU-22-432010
+    facts: [sudoers]
+    logic: {path: sudoers.not_authenticate, eq: 0}
+    rationale: No active line in /etc/sudoers or /etc/sudoers.d may contain !authenticate.
+
+  - stig_id: UBTU-22-432011
+    facts: [sudoers]
+    logic: {path: sudoers.nopasswd, eq: 0}
+    rationale: No active sudoers line may contain NOPASSWD unless documented with the ISSO for an MFA-protected administrative group.
+
+  - stig_id: UBTU-22-654224
+    facts: [sudoers]
+    logic: {path: sudoers.all_all, eq: 0}
+    rationale: sudoers must not contain "ALL ALL=(ALL) ALL" or "ALL ALL=(ALL:ALL) ALL".
+
+  # ------------------------------------------------------------------ password policy
+  - stig_id: UBTU-22-611010
+    facts: [pwquality_conf]
+    logic: {path: pwquality_conf.ucredit, le: -1}
+    rationale: ucredit in /etc/security/pwquality.conf must be -1 or lower.
+
+  - stig_id: UBTU-22-611015
+    facts: [pwquality_conf]
+    logic: {path: pwquality_conf.lcredit, le: -1}
+    rationale: lcredit in /etc/security/pwquality.conf must be -1 or lower.
+
+  - stig_id: UBTU-22-611020
+    facts: [pwquality_conf]
+    logic: {path: pwquality_conf.dcredit, le: -1}
+    rationale: dcredit in /etc/security/pwquality.conf must be -1 or lower.
+
+  - stig_id: UBTU-22-611025
+    facts: [pwquality_conf]
+    logic: {path: pwquality_conf.ocredit, le: -1}
+    rationale: ocredit in /etc/security/pwquality.conf must be -1 or lower.
+
+  - stig_id: UBTU-22-611030
+    facts: [pwquality_conf]
+    logic: {path: pwquality_conf.dictcheck, eq: 1}
+    rationale: dictcheck in /etc/security/pwquality.conf must be 1.
+
+  - stig_id: UBTU-22-611035
+    facts: [pwquality_conf]
+    logic: {path: pwquality_conf.minlen, ge: 15}
+    rationale: minlen in /etc/security/pwquality.conf must be 15 or more.
+
+  - stig_id: UBTU-22-611040
+    facts: [pwquality_conf]
+    logic: {path: pwquality_conf.difok, ge: 8}
+    rationale: difok in /etc/security/pwquality.conf must be 8 or more.
+
+  - stig_id: UBTU-22-611045
+    facts: [pwquality_conf, pam_common_password]
+    logic:
+      all:
+        - {path: pwquality_conf.enforcing, eq: 1}
+        - {path: pam_common_password.pwquality_requisite, eq: true}
+        - {path: pam_common_password.pwquality_retry, ge: 1}
+        - {path: pam_common_password.pwquality_retry, le: 3}
+    rationale: enforcing must be 1 and common-password must use pam_pwquality.so as requisite with retry between 1 and 3.
+
+  - stig_id: UBTU-22-611055
+    facts: [pam_common_password]
+    logic:
+      all:
+        - {path: pam_common_password.unix_sha512, eq: true}
+        - {path: pam_common_password.unix_rounds, ge: 100000}
+    rationale: The pam_unix.so password line must use sha512 with rounds of 100000 or more.
+
+  - stig_id: UBTU-22-611070
+    facts: [login_defs]
+    logic: {path: login_defs.ENCRYPT_METHOD, eq: SHA512}
+    rationale: ENCRYPT_METHOD in /etc/login.defs must be SHA512.
+
+  - stig_id: UBTU-22-631015
+    facts: [packages, pam_common_auth, sssd_conf]
+    na_if:
+      all:
+        - {path: [packages, libpam-pkcs11, installed], eq: false}
+        - {path: [packages, libpam-sss, installed], eq: false}
+        - {path: pam_common_auth.pkcs11, eq: false}
+        - {path: pam_common_auth.sss, eq: false}
+    logic: {path: sssd_conf.offline_credentials_expiration.value, eq: 1}
+    rationale: With smart card authentication possible, SSSD offline_credentials_expiration must be 1; with no smart card PAM module installed or configured, smart card authentication is not in use.
+
+  # ------------------------------------------------------------------ file permissions
+  - stig_id: UBTU-22-232010
+    facts: [cmd_dirs_writable]
+    observe: [cmd_dirs_writable.sample]
+    logic: {path: cmd_dirs_writable.count, eq: 0}
+    rationale: No directory under /bin, /sbin, /usr/bin, /usr/sbin, /usr/local/bin or /usr/local/sbin may be group- or world-writable.
+
+  - stig_id: UBTU-22-232015
+    facts: [cmd_files_writable]
+    observe: [cmd_files_writable.sample]
+    logic: {path: cmd_files_writable.count, eq: 0}
+    rationale: No system command may be group- or world-writable.
+
+  - stig_id: UBTU-22-232020
+    facts: [lib_files_writable]
+    observe: [lib_files_writable.sample]
+    logic: {path: lib_files_writable.count, eq: 0}
+    rationale: No shared library (*.so*) under /lib, /lib64, /usr/lib or /usr/lib64 may be group- or world-writable.
+
+  - stig_id: UBTU-22-232040
+    facts: [cmd_dirs_owner]
+    observe: [cmd_dirs_owner.sample]
+    logic: {path: cmd_dirs_owner.count, eq: 0}
+    rationale: System command directories must be owned by root.
+
+  - stig_id: UBTU-22-232045
+    facts: [cmd_dirs_group]
+    observe: [cmd_dirs_group.sample]
+    logic: {path: cmd_dirs_group.count, eq: 0}
+    result_if_false: Not_Reviewed
+    rationale: System command directories group-owned by root are not a finding; any listed directory needs review of its SGID bit and privileged owner, as the check text allows.
+
+  - stig_id: UBTU-22-232050
+    facts: [cmd_files_owner]
+    observe: [cmd_files_owner.sample]
+    logic: {path: cmd_files_owner.count, eq: 0}
+    result_if_false: Not_Reviewed
+    rationale: System commands owned by root are not a finding; any listed command needs review of whether its owner is a required system account.
+
+  - stig_id: UBTU-22-232055
+    facts: [cmd_files_group]
+    observe: [cmd_files_group.sample]
+    logic: {path: cmd_files_group.count, eq: 0}
+    result_if_false: Not_Reviewed
+    rationale: Non-SGID system commands group-owned by root are not a finding; any listed command needs review of whether its group is a required system account.
+
+  - stig_id: UBTU-22-232060
+    facts: [lib_dirs_owner]
+    observe: [lib_dirs_owner.sample]
+    logic: {path: lib_dirs_owner.count, eq: 0}
+    rationale: Library directories under /lib, /usr/lib and /lib64 must be owned by root.
+
+  - stig_id: UBTU-22-232065
+    facts: [lib_dirs_group]
+    observe: [lib_dirs_group.sample]
+    logic: {path: lib_dirs_group.count, eq: 0}
+    rationale: Library directories under /lib, /usr/lib and /lib64 must be group-owned by root.
+
+  - stig_id: UBTU-22-232070
+    facts: [lib_files_owner]
+    observe: [lib_files_owner.sample]
+    logic: {path: lib_files_owner.count, eq: 0}
+    rationale: Shared libraries must be owned by root.
+
+  - stig_id: UBTU-22-232075
+    facts: [lib_files_group]
+    observe: [lib_files_group.sample]
+    logic: {path: lib_files_group.count, eq: 0}
+    rationale: Shared libraries must be group-owned by root.
+
+  - stig_id: UBTU-22-232025
+    facts: [path_stats, units]
+    na_if:
+      all:
+        - {path: [units, rsyslog.service, file], eq: enabled}
+        - {path: [units, rsyslog.service, active], eq: active}
+    logic: {path: path_stats.var_log.mode, perm_le: "755"}
+    rationale: /var/log must have mode 755 or less; the check text makes the rule not applicable when rsyslog is active and enabled.
+
+  - stig_id: UBTU-22-232026
+    facts: [var_log_files]
+    observe: [var_log_files.sample]
+    logic: {path: var_log_files.count, eq: 0}
+    rationale: Files under /var/log (except btmp, wtmp, lastlog, history.log and eipp.log.xz) must have mode 640 or less.
+
+  - stig_id: UBTU-22-232027
+    facts: [journal_entries]
+    logic:
+      all:
+        - {path: journal_entries.dirs_mode_over_2750, empty: true}
+        - {path: journal_entries.files_mode_over_640, empty: true}
+    rationale: Journal directories must have mode 2750 or less and journal files 640 or less.
+
+  - stig_id: UBTU-22-232030
+    facts: [path_stats]
+    logic: {path: path_stats.syslog.mode, perm_le: "640"}
+    rationale: /var/log/syslog must have mode 640 or less.
+
+  - stig_id: UBTU-22-232035
+    facts: [path_stats]
+    logic: {path: "path_stats.audit_tools[].mode", perm_le: "755"}
+    rationale: The audit tools in /sbin must have mode 755 or less.
+
+  - stig_id: UBTU-22-232080
+    facts: [journal_entries]
+    logic: {path: journal_entries.dirs_not_root_owned, empty: true}
+    rationale: Journal directories must be owned by root.
+
+  - stig_id: UBTU-22-232085
+    facts: [journal_entries]
+    logic: {path: journal_entries.dirs_not_journal_group, empty: true}
+    rationale: Journal directories must be group-owned by systemd-journal.
+
+  - stig_id: UBTU-22-232090
+    facts: [journal_entries]
+    logic: {path: journal_entries.files_not_root_owned, empty: true}
+    rationale: Journal files must be owned by root.
+
+  - stig_id: UBTU-22-232095
+    facts: [journal_entries]
+    logic: {path: journal_entries.files_not_journal_group, empty: true}
+    rationale: Journal files must be group-owned by systemd-journal.
+
+  - stig_id: UBTU-22-232100
+    facts: [path_stats]
+    logic: {path: path_stats.journalctl.user, eq: root}
+    rationale: /usr/bin/journalctl must be owned by root.
+
+  - stig_id: UBTU-22-232105
+    facts: [path_stats]
+    logic: {path: path_stats.journalctl.group, eq: root}
+    rationale: /usr/bin/journalctl must be group-owned by root.
+
+  - stig_id: UBTU-22-232110
+    facts: [path_stats]
+    logic: {path: "path_stats.audit_tools[].user", eq: root}
+    rationale: The audit tools in /sbin must be owned by root.
+
+  - stig_id: UBTU-22-232120
+    facts: [path_stats]
+    logic: {path: path_stats.var_log.user, eq: root}
+    rationale: /var/log must be owned by root.
+
+  - stig_id: UBTU-22-232125
+    facts: [path_stats]
+    logic: {path: path_stats.var_log.group, eq: syslog}
+    rationale: /var/log must be group-owned by syslog.
+
+  - stig_id: UBTU-22-232130
+    facts: [path_stats]
+    logic: {path: path_stats.syslog.user, eq: syslog}
+    rationale: /var/log/syslog must be owned by syslog.
+
+  - stig_id: UBTU-22-232135
+    facts: [path_stats]
+    logic: {path: path_stats.syslog.group, eq: adm}
+    rationale: /var/log/syslog must be group-owned by adm.
+
+  - stig_id: UBTU-22-232140
+    facts: [path_stats]
+    logic: {path: path_stats.journalctl.mode, eq: "740"}
+    rationale: /usr/bin/journalctl must have mode 740 exactly, as the check text requires.
+
+  - stig_id: UBTU-22-232145
+    facts: [public_dirs]
+    observe: [public_dirs.sample]
+    logic: {path: public_dirs.count, eq: 0}
+    rationale: Every world-writable directory on local filesystems must have the sticky bit.
+
+  # ------------------------------------------------------------------ audit configuration
+  - stig_id: UBTU-22-653020
+    facts: [packages, audit_remote]
+    observe: [audit_remote.remote_server]
+    logic:
+      all:
+        - {path: [packages, audispd-plugins, installed], eq: true}
+        - {path: audit_remote.active, eq: "yes"}
+        - {path: audit_remote.remote_server, nonempty: true}
+        - {path: audit_remote.remote_server_loopback, eq: false}
+    result_if_true: Not_Reviewed
+    rationale: audispd-plugins, an active au-remote plugin and a remote_server are required; whether remote_server is a valid address of a different system needs manual review.
+
+  - stig_id: UBTU-22-653025
+    facts: [auditd_conf]
+    logic: {path: auditd_conf.action_mail_acct, nonempty: true}
+    result_if_true: Not_Reviewed
+    rationale: action_mail_acct must be set; whether it is the SA/ISSO address (and an email package delivers it) needs manual review.
+
+  - stig_id: UBTU-22-653030
+    facts: [auditd_conf]
+    logic: {path: auditd_conf.disk_full_action, in: [HALT, SYSLOG, SINGLE]}
+    rationale: disk_full_action in auditd.conf must be HALT, SYSLOG or SINGLE.
+
+  - stig_id: UBTU-22-653040
+    facts: [auditd_conf]
+    observe: [auditd_conf.space_left]
+    logic:
+      all:
+        - {path: auditd_conf.space_left_percent, ge: 25}
+        - {path: auditd_conf.space_left_action, eq: email}
+    unmet_if:
+      any:
+        - {path: auditd_conf.space_left, unset: true}
+        - {path: auditd_conf.space_left_percent, lt: 25}
+        - {path: auditd_conf.space_left_action, unset: true}
+        - {path: auditd_conf.space_left_action, not_in: [email, exec]}
+    rationale: space_left must be 25% or more with space_left_action email; exec (a script that may notify the SA) and absolute sizes need manual review.
+
+  - stig_id: UBTU-22-653045
+    facts: [audit_paths]
+    logic: {path: "audit_paths.log_files[].mode", perm_le: "600"}
+    rationale: Audit log files in the log_file directory must have mode 600 or less.
+
+  - stig_id: UBTU-22-653050
+    facts: [audit_paths]
+    logic: {path: "audit_paths.log_files[].user", eq: root}
+    rationale: Audit log files must be owned by root.
+
+  - stig_id: UBTU-22-653055
+    facts: [auditd_conf]
+    logic: {path: auditd_conf.log_group, eq: root}
+    rationale: log_group in auditd.conf must be root.
+
+  - stig_id: UBTU-22-653060
+    facts: [audit_paths]
+    logic: {path: audit_paths.log_dir.mode, perm_le: "750"}
+    rationale: The audit log directory must have mode 750 or less.
+
+  - stig_id: UBTU-22-653065
+    facts: [audit_paths]
+    logic: {path: "audit_paths.conf[].mode", perm_le: "640"}
+    rationale: audit.rules, auditd.conf and rules.d files must have mode 640 or less.
+
+  - stig_id: UBTU-22-653070
+    facts: [audit_paths]
+    logic: {path: "audit_paths.conf[].user", eq: root}
+    rationale: audit.rules, auditd.conf and rules.d files must be owned by root.
+
+  - stig_id: UBTU-22-653075
+    facts: [audit_paths]
+    logic: {path: "audit_paths.conf[].group", eq: root}
+    rationale: audit.rules, auditd.conf and rules.d files must be group-owned by root.
+
+  - stig_id: UBTU-22-654240
+    facts: [audit_status, audit_rules_d]
+    logic:
+      all:
+        - {path: audit_status.enabled, eq: 2}
+        - {path: audit_rules_d.immutable, eq: true}
+    rationale: The running audit system must be immutable (enabled 2) and "-e 2" must be in a rules.d file.
+
+  # ------------------------------------------------------------------ audit rules (auditctl -l)
+  # The audit operator matches the loaded rules: NotAFinding when a rule of the example's
+  # form exists (the key is ignored, /bin and /usr/bin paths are equivalent); Open when no
+  # loaded rule mentions the command, file or syscalls; Not_Reviewed when rules mention them
+  # in another form.
+  - stig_id: UBTU-22-654010
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/sbin/apparmor_parser}}
+    rationale: Uses of apparmor_parser must be audited.
+  - stig_id: UBTU-22-654015
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/chacl}}
+    rationale: Uses of chacl must be audited.
+  - stig_id: UBTU-22-654020
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/chage}}
+    rationale: Uses of chage must be audited.
+  - stig_id: UBTU-22-654025
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/chcon}}
+    rationale: Uses of chcon must be audited.
+  - stig_id: UBTU-22-654030
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/chfn}}
+    rationale: Uses of chfn must be audited.
+  - stig_id: UBTU-22-654035
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/chsh}}
+    rationale: Uses of chsh must be audited.
+  - stig_id: UBTU-22-654040
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/crontab}}
+    rationale: Uses of crontab must be audited.
+  - stig_id: UBTU-22-654041
+    facts: [audit_rules]
+    logic:
+      all:
+        - {path: audit_rules, audit: {watch: /etc/cron.d, perm: wa}}
+        - {path: audit_rules, audit: {watch: /var/spool/cron, perm: wa}}
+    rationale: Changes to /etc/cron.d and /var/spool/cron must be audited.
+  - stig_id: UBTU-22-654045
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /usr/sbin/fdisk, perm: x}}
+    rationale: Execution of fdisk must be audited.
+  - stig_id: UBTU-22-654050
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/gpasswd}}
+    rationale: Uses of gpasswd must be audited.
+  - stig_id: UBTU-22-654055
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /usr/bin/kmod, perm: x}}
+    rationale: Execution of kmod must be audited.
+  - stig_id: UBTU-22-654060
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /usr/sbin/modprobe, perm: x}}
+    rationale: Execution of modprobe must be audited.
+  - stig_id: UBTU-22-654065
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/mount}}
+    rationale: Uses of mount must be audited.
+  - stig_id: UBTU-22-654070
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/newgrp}}
+    rationale: Uses of newgrp must be audited.
+  - stig_id: UBTU-22-654075
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/sbin/pam_timestamp_check}}
+    rationale: Uses of pam_timestamp_check must be audited.
+  - stig_id: UBTU-22-654080
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/passwd}}
+    rationale: Uses of passwd must be audited.
+  - stig_id: UBTU-22-654085
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/setfacl}}
+    rationale: Uses of setfacl must be audited.
+  - stig_id: UBTU-22-654090
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/ssh-agent}}
+    rationale: Uses of ssh-agent must be audited.
+  - stig_id: UBTU-22-654095
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/lib/openssh/ssh-keysign}}
+    rationale: Uses of ssh-keysign must be audited.
+  - stig_id: UBTU-22-654100
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/su}}
+    rationale: Uses of su must be audited.
+  - stig_id: UBTU-22-654105
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/sudo}}
+    rationale: Uses of sudo must be audited.
+  - stig_id: UBTU-22-654110
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/sudoedit}}
+    rationale: Uses of sudoedit must be audited.
+  - stig_id: UBTU-22-654115
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/bin/umount}}
+    rationale: Uses of umount must be audited.
+  - stig_id: UBTU-22-654120
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/sbin/unix_update}}
+    rationale: Uses of unix_update must be audited.
+  - stig_id: UBTU-22-654125
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/sbin/usermod}}
+    rationale: Uses of usermod must be audited.
+  - stig_id: UBTU-22-654126
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {exec: /usr/sbin/useradd}}
+    rationale: Uses of useradd must be audited.
+  - stig_id: UBTU-22-654130
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /etc/group, perm: wa}}
+    rationale: Changes to /etc/group must be audited.
+  - stig_id: UBTU-22-654135
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /etc/gshadow, perm: wa}}
+    rationale: Changes to /etc/gshadow must be audited.
+  - stig_id: UBTU-22-654140
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /etc/security/opasswd, perm: wa}}
+    rationale: Changes to /etc/security/opasswd must be audited.
+  - stig_id: UBTU-22-654145
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /etc/passwd, perm: wa}}
+    rationale: Changes to /etc/passwd must be audited.
+  - stig_id: UBTU-22-654150
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /etc/shadow, perm: wa}}
+    rationale: Changes to /etc/shadow must be audited.
+  - stig_id: UBTU-22-654155
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {syscalls: [chmod, fchmod, fchmodat]}}
+    rationale: chmod, fchmod and fchmodat must be audited for b32 and b64 with auid>=1000 and auid!=-1.
+  - stig_id: UBTU-22-654160
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {syscalls: [chown, fchown, fchownat, lchown]}}
+    rationale: chown, fchown, fchownat and lchown must be audited for b32 and b64 with auid>=1000 and auid!=-1.
+  - stig_id: UBTU-22-654165
+    facts: [audit_rules]
+    logic:
+      path: audit_rules
+      audit:
+        syscalls: [creat, open, openat, open_by_handle_at, truncate, ftruncate]
+        filters: [["exit=-EPERM", "auid>=1000", "auid!=-1"], ["exit=-EACCES", "auid>=1000", "auid!=-1"]]
+    rationale: Unsuccessful (EPERM and EACCES) creat, open, openat, open_by_handle_at, truncate and ftruncate calls must be audited for b32 and b64.
+  - stig_id: UBTU-22-654170
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {syscalls: [delete_module]}}
+    rationale: delete_module must be audited for b32 and b64.
+  - stig_id: UBTU-22-654175
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {syscalls: [init_module, finit_module]}}
+    rationale: init_module and finit_module must be audited for b32 and b64.
+  - stig_id: UBTU-22-654180
+    facts: [audit_rules]
+    logic:
+      path: audit_rules
+      audit:
+        syscalls: [setxattr, fsetxattr, lsetxattr, removexattr, fremovexattr, lremovexattr]
+        filters: [["auid>=1000", "auid!=-1"], ["auid=0"]]
+    rationale: The xattr system calls must be audited for b32 and b64, for users (auid>=1000) and for root (auid=0), as in the check text.
+  - stig_id: UBTU-22-654185
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {syscalls: [unlink, unlinkat, rename, renameat, rmdir]}}
+    rationale: unlink, unlinkat, rename, renameat and rmdir must be audited for b32 and b64.
+  - stig_id: UBTU-22-654190
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /var/log/journal, perm: wa}}
+    rationale: Changes to /var/log/journal must be audited.
+  - stig_id: UBTU-22-654195
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /var/log/btmp, perm: wa}}
+    rationale: Changes to /var/log/btmp must be audited.
+  - stig_id: UBTU-22-654200
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /var/log/wtmp, perm: wa}}
+    rationale: Changes to /var/log/wtmp must be audited.
+  - stig_id: UBTU-22-654205
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /var/run/utmp, perm: wa}}
+    rationale: Changes to /var/run/utmp (/run/utmp) must be audited.
+  - stig_id: UBTU-22-654210
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /var/log/faillog, perm: wa}}
+    rationale: Changes to /var/log/faillog must be audited.
+  - stig_id: UBTU-22-654215
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /var/log/lastlog, perm: wa}}
+    rationale: Changes to /var/log/lastlog must be audited.
+  - stig_id: UBTU-22-654220
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /etc/sudoers, perm: wa}}
+    rationale: Changes to /etc/sudoers must be audited.
+  - stig_id: UBTU-22-654225
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /etc/sudoers.d, perm: wa}}
+    rationale: Changes to /etc/sudoers.d must be audited.
+  - stig_id: UBTU-22-654230
+    facts: [audit_rules]
+    logic:
+      path: audit_rules
+      audit:
+        syscalls: [execve]
+        filters: [["uid!=euid", "euid=0"], ["gid!=egid", "egid=0"]]
+    rationale: execve with uid!=euid (euid 0) and gid!=egid (egid 0) must be audited for b32 and b64.
+  - stig_id: UBTU-22-654235
+    facts: [audit_rules]
+    logic: {path: audit_rules, audit: {watch: /var/log/sudo.log, perm: wa}}
+    rationale: Changes to /var/log/sudo.log must be audited.

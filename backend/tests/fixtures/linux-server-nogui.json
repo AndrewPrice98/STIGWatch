@@ -1,0 +1,645 @@
+{
+ "collector": "linux",
+ "version": 1,
+ "collected_at": "2026-11-09T14:02:11Z",
+ "privileged": true,
+ "redacted": true,
+ "escaper": "awk",
+ "host": {
+  "name": "jammy-db-02",
+  "os_release": "Ubuntu 22.04.5 LTS",
+  "kernel": "5.15.0-126-fips",
+  "virtualization": "vmware"
+ },
+ "facts": {
+  "os_release": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "PRETTY_NAME=\"Ubuntu 22.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"22.04\"\nVERSION=\"22.04.5 LTS (Jammy Jellyfish)\"\nVERSION_CODENAME=jammy\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nUBUNTU_CODENAME=jammy"
+   },
+   "reason": null,
+   "command": "cat /etc/os-release"
+  },
+  "lsb_release": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "DISTRIB_ID=Ubuntu\nDISTRIB_RELEASE=22.04\nDISTRIB_CODENAME=jammy\nDISTRIB_DESCRIPTION=\"Ubuntu 22.04.5 LTS\""
+   },
+   "reason": null,
+   "command": "cat /etc/lsb-release"
+  },
+  "packages": {
+   "status": "ok",
+   "value": {
+    "queried": [
+     "openssh-server",
+     "telnetd",
+     "rsh-server",
+     "ntp",
+     "chrony",
+     "systemd-timesyncd",
+     "libpam-pwquality",
+     "ufw",
+     "auditd",
+     "audispd-plugins",
+     "aide",
+     "aide-common",
+     "apparmor",
+     "rsyslog",
+     "opensc-pkcs11",
+     "libpam-pkcs11",
+     "libpam-sss",
+     "sssd",
+     "vlock",
+     "nfs-kernel-server",
+     "kdump-tools",
+     "xserver-xorg-core",
+     "xwayland",
+     "gnome-shell",
+     "gdm3",
+     "lightdm",
+     "sddm",
+     "ubuntu-desktop",
+     "xfce4-session",
+     "mate-session-manager",
+     "cinnamon-session",
+     "plasma-workspace"
+    ],
+    "text": "openssh-server\tii \t1:8.9p1-3ubuntu0.10\nchrony\tii \t4.2-2ubuntu2\nsystemd-timesyncd\trc \t249.11-0ubuntu3.12\nlibpam-pwquality\tii \t1.4.4-1build2\nufw\tii \t0.36.1-4ubuntu0.1\nauditd\tii \t1:3.0.7-1build1\naudispd-plugins\tii \t1:3.0.7-1build1\naide\tii \t0.17.4-1\naide-common\tii \t0.17.4-1\napparmor\tii \t3.0.4-2ubuntu2.4\nrsyslog\tii \t8.2112.0-2ubuntu2.2\nopensc-pkcs11\tii \t0.22.0-1ubuntu2\nlibpam-pkcs11\tii \t0.6.11-4build2\nlibpam-sss\tii \t2.6.3-1ubuntu3.3\nsssd\tii \t2.6.3-1ubuntu3.3\nvlock\tii \t2.2.2-10"
+   },
+   "reason": null,
+   "command": "dpkg-query -W -f '${Package}\\t${db:Status-Abbrev}\\t${Version}\\n' openssh-server telnetd rsh-server ntp chrony systemd-timesyncd libpam-pwquality ufw auditd audispd-plugins aide aide-common apparmor rsyslog opensc-pkcs11 libpam-pkcs11 libpam-sss sssd vlock nfs-kernel-server kdump-tools xserver-xorg-core xwayland gnome-shell gdm3 lightdm sddm ubuntu-desktop xfce4-session mate-session-manager cinnamon-session plasma-workspace"
+  },
+  "units": {
+   "status": "ok",
+   "value": {
+    "queried": [
+     "ssh.service",
+     "auditd.service",
+     "apparmor.service",
+     "rsyslog.service",
+     "ufw.service",
+     "kdump-tools.service",
+     "ctrl-alt-del.target",
+     "sssd.service",
+     "chrony.service"
+    ],
+    "text": "Id=ssh.service\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=auditd.service\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=apparmor.service\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=rsyslog.service\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=ufw.service\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=kdump-tools.service\nLoadState=not-found\nActiveState=inactive\nUnitFileState=\n\nId=ctrl-alt-del.target\nLoadState=masked\nActiveState=inactive\nUnitFileState=masked\n\nId=sssd.service\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=chrony.service\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled"
+   },
+   "reason": null,
+   "command": "systemctl show -p Id -p LoadState -p ActiveState -p UnitFileState ssh.service auditd.service apparmor.service rsyslog.service ufw.service kdump-tools.service ctrl-alt-del.target sssd.service chrony.service"
+  },
+  "sshd_config": {
+   "status": "ok",
+   "value": {
+    "files": [
+     "/etc/ssh/sshd_config",
+     "/etc/ssh/sshd_config.d/99-stig.conf"
+    ],
+    "text": "/etc/ssh/sshd_config\tInclude /etc/ssh/sshd_config.d/*.conf\n/etc/ssh/sshd_config\tKbdInteractiveAuthentication no\n/etc/ssh/sshd_config\tUsePAM yes\n/etc/ssh/sshd_config\tX11Forwarding no\n/etc/ssh/sshd_config\tPrintMotd no\n/etc/ssh/sshd_config\tAcceptEnv LANG LC_*\n/etc/ssh/sshd_config\tSubsystem sftp /usr/lib/openssh/sftp-server\n/etc/ssh/sshd_config.d/99-stig.conf\tBanner /etc/issue.net\n/etc/ssh/sshd_config.d/99-stig.conf\tPermitEmptyPasswords no\n/etc/ssh/sshd_config.d/99-stig.conf\tPermitUserEnvironment no\n/etc/ssh/sshd_config.d/99-stig.conf\tX11UseLocalhost yes\n/etc/ssh/sshd_config.d/99-stig.conf\tClientAliveCountMax 1\n/etc/ssh/sshd_config.d/99-stig.conf\tClientAliveInterval 600\n/etc/ssh/sshd_config.d/99-stig.conf\tPubkeyAuthentication yes\n/etc/ssh/sshd_config.d/99-stig.conf\tCiphers aes256-ctr,aes256-gcm@openssh.com,aes128-ctr,aes128-gcm@openssh.com\n/etc/ssh/sshd_config.d/99-stig.conf\tMACs hmac-sha2-512,hmac-sha2-512-etm@openssh.com,hmac-sha2-256,hmac-sha2-256-etm@openssh.com\n/etc/ssh/sshd_config.d/99-stig.conf\tKexAlgorithms ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256"
+   },
+   "reason": null,
+   "command": "cat /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf (active lines)"
+  },
+  "ssh_banner": {
+   "status": "ok",
+   "value": {
+    "path": "/etc/issue.net",
+    "exists": true,
+    "text": "You are accessing a U.S. Government (USG) Information System (IS) that is provided for USG-authorized use only.\n\nBy using this IS (which includes any device attached to this IS), you consent to the following conditions:\n\n-The USG routinely intercepts and monitors communications on this IS for purposes including, but not limited to, penetration testing, COMSEC monitoring, network operations and defense, personnel misconduct (PM), law enforcement (LE), and counterintelligence (CI) investigations.\n\n-At any time, the USG may inspect and seize data stored on this IS.\n\n-Communications using, or data stored on, this IS are not private, are subject to routine monitoring, interception, and search, and may be disclosed or used for any USG-authorized purpose.\n\n-This IS includes security measures (e.g., authentication and access controls) to protect USG interests--not for your personal benefit or privacy.\n\n-Notwithstanding the above, using this IS does not constitute consent to PM, LE or CI investigative searching or monitoring of the content of privileged communications, or work product, related to personal representation or services by attorneys, psychotherapists, or clergy, and their assistants.  Such communications and work product are private and confidential.  See User Agreement for details."
+   },
+   "reason": null,
+   "command": "cat /etc/issue.net"
+  },
+  "sshd_effective": {
+   "status": "ok",
+   "value": "port 22\naddressfamily any\nlistenaddress 0.0.0.0:22\npermitemptypasswords no\npermituserenvironment no\nx11forwarding no\nx11uselocalhost yes\nclientalivecountmax 1\nclientaliveinterval 600\nbanner /etc/issue.net\nciphers aes256-ctr,aes256-gcm@openssh.com,aes128-ctr,aes128-gcm@openssh.com",
+   "reason": null,
+   "command": "sshd -T"
+  },
+  "sysctl_runtime": {
+   "status": "ok",
+   "value": "kernel.dmesg_restrict\tok\t1\nkernel.randomize_va_space\tok\t2\nnet.ipv4.tcp_syncookies\tok\t1\ncrypto.fips_enabled\tok\t1",
+   "reason": null,
+   "command": "cat /proc/sys/<key> for kernel.dmesg_restrict kernel.randomize_va_space net.ipv4.tcp_syncookies crypto.fips_enabled"
+  },
+  "sysctl_saved": {
+   "status": "ok",
+   "value": {
+    "files": [
+     "/etc/sysctl.d/10-kernel-hardening.conf",
+     "/etc/sysctl.d/99-stig.conf"
+    ],
+    "text": "/etc/sysctl.d/10-kernel-hardening.conf\tkernel.dmesg_restrict = 1\n/etc/sysctl.d/99-stig.conf\tnet.ipv4.tcp_syncookies = 1\n/etc/sysctl.d/99-stig.conf\tkernel.randomize_va_space = 2"
+   },
+   "reason": null,
+   "command": "grep the sysctl keys in /run/sysctl.d/*.conf /etc/sysctl.d/*.conf /usr/local/lib/sysctl.d/*.conf /usr/lib/sysctl.d/*.conf /lib/sysctl.d/*.conf /etc/sysctl.conf"
+  },
+  "login_defs": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "MAIL_DIR        /var/mail\nFAILLOG_ENAB\t\tyes\nLOG_UNKFAIL_ENAB\tno\nSYSLOG_SU_ENAB\t\tyes\nFTMP_FILE\t/var/log/btmp\nUMASK\t\t077\nPASS_MAX_DAYS\t180\nPASS_MIN_DAYS\t1\nPASS_WARN_AGE\t7\nUID_MIN\t\t\t 1000\nUID_MAX\t\t\t60000\nENCRYPT_METHOD SHA512"
+   },
+   "reason": null,
+   "command": "cat /etc/login.defs"
+  },
+  "useradd_defaults": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "SHELL=/bin/sh\nINACTIVE=35"
+   },
+   "reason": null,
+   "command": "cat /etc/default/useradd"
+  },
+  "pam_common_auth": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "auth\trequired\t\t\tpam_faildelay.so\tdelay=4000000\nauth\t[success=3 default=ignore]\tpam_pkcs11.so\nauth\t[success=2 default=ignore]\tpam_unix.so try_first_pass\nauth\t[default=die]\t\t\tpam_faillock.so authfail\nauth\tsufficient\t\t\tpam_faillock.so authsucc\nauth\trequisite\t\t\tpam_deny.so\nauth\trequired\t\t\tpam_permit.so\nauth\toptional\t\t\tpam_cap.so"
+   },
+   "reason": null,
+   "command": "cat /etc/pam.d/common-auth"
+  },
+  "pam_common_password": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "password\trequisite\t\t\tpam_pwquality.so retry=3\npassword\t[success=1 default=ignore]\tpam_unix.so obscure use_authtok try_first_pass sha512 shadow rounds=100000\npassword\trequisite\t\t\tpam_deny.so\npassword\trequired\t\t\tpam_permit.so"
+   },
+   "reason": null,
+   "command": "cat /etc/pam.d/common-password"
+  },
+  "faillock_conf": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "audit\nsilent\ndeny = 3\nfail_interval = 900\nunlock_time = 0"
+   },
+   "reason": null,
+   "command": "cat /etc/security/faillock.conf"
+  },
+  "pwquality_conf": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "difok = 8\nminlen = 15\ndcredit = -1\nucredit = -1\nlcredit = -1\nocredit = -1\ndictcheck = 1\nenforcing = 1"
+   },
+   "reason": null,
+   "command": "cat /etc/security/pwquality.conf"
+  },
+  "pam_pkcs11_conf": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "pam_pkcs11 {\nnullok = false;\ndebug = false;\nuse_first_pass = false;\nuse_pkcs11_module = opensc;\nuse_mappers = pwent, null;\n}"
+   },
+   "reason": null,
+   "command": "cat /etc/pam_pkcs11/pam_pkcs11.conf"
+  },
+  "limits": {
+   "status": "ok",
+   "value": {
+    "files": [
+     "/etc/security/limits.d/99-stig.conf"
+    ],
+    "text": "/etc/security/limits.d/99-stig.conf\t* hard maxlogins 10"
+   },
+   "reason": null,
+   "command": "grep maxlogins /etc/security/limits.conf /etc/security/limits.d/*.conf"
+  },
+  "shell_tmout": {
+   "status": "ok",
+   "value": {
+    "files": [
+     "/etc/profile.d/99-terminal_tmout.sh"
+    ],
+    "text": "/etc/profile.d/99-terminal_tmout.sh\tTMOUT=900"
+   },
+   "reason": null,
+   "command": "grep TMOUT= /etc/bash.bashrc /etc/profile.d/*"
+  },
+  "apt_conf": {
+   "status": "ok",
+   "value": {
+    "files": [
+     "/etc/apt/apt.conf.d/01-vendor-ubuntu",
+     "/etc/apt/apt.conf.d/50unattended-upgrades"
+    ],
+    "text": "/etc/apt/apt.conf.d/01-vendor-ubuntu\tAPT::Get::AllowUnauthenticated \"false\";\n/etc/apt/apt.conf.d/50unattended-upgrades\tUnattended-Upgrade::Remove-Unused-Kernel-Packages \"true\";\n/etc/apt/apt.conf.d/50unattended-upgrades\tUnattended-Upgrade::Remove-Unused-Dependencies \"true\";"
+   },
+   "reason": null,
+   "command": "grep -i 'allowunauthenticated|remove-unused' /etc/apt/apt.conf.d/*"
+  },
+  "modprobe_usb": {
+   "status": "ok",
+   "value": {
+    "files": [
+     "/etc/modprobe.d/stig.conf"
+    ],
+    "text": "/etc/modprobe.d/stig.conf\tinstall usb-storage /bin/false\n/etc/modprobe.d/stig.conf\tblacklist usb-storage"
+   },
+   "reason": null,
+   "command": "grep usb-storage /etc/modprobe.d/*"
+  },
+  "sssd_conf": {
+   "status": "ok",
+   "value": {
+    "files": [
+     "/etc/sssd/sssd.conf"
+    ],
+    "text": "/etc/sssd/sssd.conf\toffline_credentials_expiration = 1"
+   },
+   "reason": null,
+   "command": "grep offline_credentials_expiration /etc/sssd/sssd.conf /etc/sssd/conf.d/*.conf"
+  },
+  "grub_cfg": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "pbkdf2_entries": 1,
+    "plain_password_entries": 0,
+    "superusers_lines": 1,
+    "linux_lines": 4,
+    "linux_lines_audit1": 4
+   },
+   "reason": null,
+   "command": "grep -c (password_pbkdf2, password, set superusers, linux, audit=1) /boot/grub/grub.cfg"
+  },
+  "default_grub": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash audit=1\"\nGRUB_CMDLINE_LINUX=\"audit=1\""
+   },
+   "reason": null,
+   "command": "cat /etc/default/grub"
+  },
+  "proc_cmdline": {
+   "status": "ok",
+   "value": "BOOT_IMAGE=/vmlinuz-5.15.0-126-fips root=/dev/mapper/ubuntu--vg-ubuntu--lv ro quiet splash audit=1 fips=1",
+   "reason": null,
+   "command": "cat /proc/cmdline"
+  },
+  "shadow": {
+   "status": "ok",
+   "value": {
+    "accounts": 28,
+    "empty_password": 0
+   },
+   "reason": null,
+   "command": "awk -F: count of accounts and of empty password fields in /etc/shadow"
+  },
+  "root_password_status": {
+   "status": "ok",
+   "value": "root L 08/09/2022 0 99999 7 -1",
+   "reason": null,
+   "command": "passwd -S root"
+  },
+  "passwd_accounts": {
+   "status": "ok",
+   "value": "root:0:0:/bin/bash\ndaemon:1:1:/usr/sbin/nologin\nbin:2:2:/usr/sbin/nologin\nsys:3:3:/usr/sbin/nologin\nsync:4:65534:/bin/sync\ngames:5:60:/usr/sbin/nologin\nman:6:12:/usr/sbin/nologin\nlp:7:7:/usr/sbin/nologin\nmail:8:8:/usr/sbin/nologin\nnews:9:9:/usr/sbin/nologin\nuucp:10:10:/usr/sbin/nologin\nproxy:13:13:/usr/sbin/nologin\nwww-data:33:33:/usr/sbin/nologin\nbackup:34:34:/usr/sbin/nologin\nlist:38:38:/usr/sbin/nologin\nirc:39:39:/usr/sbin/nologin\ngnats:41:41:/usr/sbin/nologin\nnobody:65534:65534:/usr/sbin/nologin\n_apt:100:65534:/usr/sbin/nologin\nsystemd-network:101:102:/usr/sbin/nologin\nsystemd-resolve:102:103:/usr/sbin/nologin\nmessagebus:103:104:/usr/sbin/nologin\nsystemd-timesync:104:105:/usr/sbin/nologin\nsyslog:105:111:/usr/sbin/nologin\n_chrony:106:113:/usr/sbin/nologin\nsshd:107:65534:/usr/sbin/nologin\naccount-1:1000:1000:/bin/bash\naccount-2:1001:1001:/bin/bash",
+   "reason": null,
+   "command": "awk -F: '{print $1\":\"$3\":\"$4\":\"$7}' /etc/passwd"
+  },
+  "group_sudo": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "account-1"
+   },
+   "reason": null,
+   "command": "grep '^sudo:' /etc/group (members)"
+  },
+  "sudoers": {
+   "status": "ok",
+   "value": {
+    "files": [
+     "/etc/sudoers"
+    ],
+    "text": "/etc/sudoers\troot\tALL=(ALL:ALL) ALL\n/etc/sudoers\t%admin ALL=(ALL) ALL\n/etc/sudoers\t%sudo\tALL=(ALL:ALL) ALL"
+   },
+   "reason": null,
+   "command": "grep -iwE 'NOPASSWD|!authenticate|ALL' /etc/sudoers /etc/sudoers.d/*"
+  },
+  "auditd_conf": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "local_events = yes\nwrite_logs = yes\nlog_file = /var/log/audit/audit.log\nlog_group = root\nlog_format = ENRICHED\nflush = INCREMENTAL_ASYNC\nfreq = 50\nmax_log_file = 8\nnum_logs = 5\nspace_left = 25%\nspace_left_action = email\naction_mail_acct = isso@example.test\nadmin_space_left = 50\nadmin_space_left_action = SUSPEND\ndisk_full_action = HALT\ndisk_error_action = SUSPEND"
+   },
+   "reason": null,
+   "command": "cat /etc/audit/auditd.conf"
+  },
+  "audit_rules": {
+   "status": "ok",
+   "value": "-a always,exit -S all -F path=/sbin/apparmor_parser -F perm=x -F auid>=1000 -F auid!=-1 -F key=perm_chng\n-a always,exit -S all -F path=/usr/bin/chacl -F perm=x -F auid>=1000 -F auid!=-1 -F key=perm_chng\n-a always,exit -S all -F path=/usr/bin/chage -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged-chage\n-a always,exit -S all -F path=/usr/bin/chcon -F perm=x -F auid>=1000 -F auid!=-1 -F key=perm_chng\n-a always,exit -S all -F path=/usr/bin/chfn -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged-chfn\n-a always,exit -S all -F path=/usr/bin/chsh -F perm=x -F auid>=1000 -F auid!=-1 -F key=priv_cmd\n-a always,exit -S all -F path=/usr/bin/crontab -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged-crontab\n-w /etc/cron.d -p wa -k cronjobs\n-w /var/spool/cron -p wa -k cronjobs\n-w /usr/sbin/fdisk -p x -k fdisk\n-a always,exit -S all -F path=/usr/bin/gpasswd -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged-gpasswd\n-w /bin/kmod -p x -k module\n-w /sbin/modprobe -p x -k modules\n-a always,exit -S all -F path=/usr/bin/mount -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged-mount\n-a always,exit -S all -F path=/usr/bin/newgrp -F perm=x -F auid>=1000 -F auid!=-1 -F key=priv_cmd\n-a always,exit -S all -F path=/usr/sbin/pam_timestamp_check -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged-pam_timestamp_check\n-a always,exit -S all -F path=/usr/bin/passwd -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged-passwd\n-a always,exit -S all -F path=/usr/bin/setfacl -F perm=x -F auid>=1000 -F auid!=-1 -F key=perm_chng\n-a always,exit -S all -F path=/usr/bin/ssh-agent -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged-ssh\n-a always,exit -S all -F path=/usr/lib/openssh/ssh-keysign -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged-ssh\n-a always,exit -S all -F path=/bin/su -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged-priv_change\n-a always,exit -S all -F path=/usr/bin/sudo -F perm=x -F auid>=1000 -F auid!=-1 -F key=priv_cmd\n-a always,exit -S all -F path=/usr/bin/sudoedit -F perm=x -F auid>=1000 -F auid!=-1 -F key=priv_cmd\n-a always,exit -S all -F path=/usr/bin/umount -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged-umount\n-a always,exit -S all -F path=/sbin/unix_update -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged-unix-update\n-a always,exit -S all -F path=/usr/sbin/usermod -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged-usermod\n-a always,exit -S all -F path=/usr/sbin/useradd -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged-useradd\n-w /etc/group -p wa -k usergroup_modification\n-w /etc/gshadow -p wa -k usergroup_modification\n-w /etc/security/opasswd -p wa -k usergroup_modification\n-w /etc/passwd -p wa -k usergroup_modification\n-w /etc/shadow -p wa -k usergroup_modification\n-a always,exit -F arch=b32 -S chmod,fchmod,fchmodat -F auid>=1000 -F auid!=-1 -F key=perm_chng\n-a always,exit -F arch=b64 -S chmod,fchmod,fchmodat -F auid>=1000 -F auid!=-1 -F key=perm_chng\n-a always,exit -F arch=b32 -S lchown,fchown,chown,fchownat -F auid>=1000 -F auid!=-1 -F key=perm_chng\n-a always,exit -F arch=b64 -S chown,fchown,lchown,fchownat -F auid>=1000 -F auid!=-1 -F key=perm_chng\n-a always,exit -F arch=b32 -S open,truncate,ftruncate,creat,openat,open_by_handle_at -F exit=-EPERM -F auid>=1000 -F auid!=-1 -F key=perm_access\n-a always,exit -F arch=b32 -S open,truncate,ftruncate,creat,openat,open_by_handle_at -F exit=-EACCES -F auid>=1000 -F auid!=-1 -F key=perm_access\n-a always,exit -F arch=b64 -S open,truncate,ftruncate,creat,openat,open_by_handle_at -F exit=-EPERM -F auid>=1000 -F auid!=-1 -F key=perm_access\n-a always,exit -F arch=b64 -S open,truncate,ftruncate,creat,openat,open_by_handle_at -F exit=-EACCES -F auid>=1000 -F auid!=-1 -F key=perm_access\n-a always,exit -F arch=b32 -S delete_module -F auid>=1000 -F auid!=-1 -F key=module_chng\n-a always,exit -F arch=b64 -S delete_module -F auid>=1000 -F auid!=-1 -F key=module_chng\n-a always,exit -F arch=b32 -S init_module,finit_module -F auid>=1000 -F auid!=-1 -F key=module_chng\n-a always,exit -F arch=b64 -S init_module,finit_module -F auid>=1000 -F auid!=-1 -F key=module_chng\n-a always,exit -F arch=b32 -S setxattr,lsetxattr,fsetxattr,removexattr,lremovexattr,fremovexattr -F auid>=1000 -F auid!=-1 -F key=perm_mod\n-a always,exit -F arch=b32 -S setxattr,lsetxattr,fsetxattr,removexattr,lremovexattr,fremovexattr -F auid=0 -F key=perm_mod\n-a always,exit -F arch=b64 -S setxattr,lsetxattr,fsetxattr,removexattr,lremovexattr,fremovexattr -F auid>=1000 -F auid!=-1 -F key=perm_mod\n-a always,exit -F arch=b64 -S setxattr,lsetxattr,fsetxattr,removexattr,lremovexattr,fremovexattr -F auid=0 -F key=perm_mod\n-a always,exit -F arch=b64 -S rename,rmdir,unlink,unlinkat,renameat -F auid>=1000 -F auid!=-1 -F key=delete\n-a always,exit -F arch=b32 -S unlink,rename,rmdir,unlinkat,renameat -F auid>=1000 -F auid!=-1 -F key=delete\n-w /var/log/journal -p wa -k systemd_journal\n-w /var/log/btmp -p wa -k logins\n-w /var/log/wtmp -p wa -k logins\n-w /var/run/utmp -p wa -k logins\n-w /var/log/faillog -p wa -k logins\n-w /var/log/lastlog -p wa -k logins\n-w /etc/sudoers -p wa -k privilege_modification\n-w /etc/sudoers.d -p wa -k privilege_modification\n-a always,exit -F arch=b64 -S execve -C uid!=euid -F euid=0 -F key=execpriv\n-a always,exit -F arch=b64 -S execve -C gid!=egid -F egid=0 -F key=execpriv\n-a always,exit -F arch=b32 -S execve -C uid!=euid -F euid=0 -F key=execpriv\n-a always,exit -F arch=b32 -S execve -C gid!=egid -F egid=0 -F key=execpriv\n-w /var/log/sudo.log -p wa -k maintenance",
+   "reason": null,
+   "command": "auditctl -l"
+  },
+  "audit_status": {
+   "status": "ok",
+   "value": "enabled 2\nfailure 1\npid 812\nrate_limit 0\nbacklog_limit 8192\nlost 0\nbacklog 0\nbacklog_wait_time 60000\nbacklog_wait_time_actual 0\nloginuid_immutable 0 unlocked",
+   "reason": null,
+   "command": "auditctl -s"
+  },
+  "audit_rules_d": {
+   "status": "ok",
+   "value": {
+    "files": [
+     "/etc/audit/rules.d/99-finalize.rules"
+    ],
+    "text": "/etc/audit/rules.d/99-finalize.rules\t-e 2"
+   },
+   "reason": null,
+   "command": "grep '^-e' /etc/audit/rules.d/*.rules"
+  },
+  "audit_paths": {
+   "status": "ok",
+   "value": "conf\t640\troot\troot\tf\t/etc/audit/audit.rules\nconf\t640\troot\troot\tf\t/etc/audit/auditd.conf\nconf\t640\troot\troot\tf\t/etc/audit/rules.d/stig.rules\nconf\t640\troot\troot\tf\t/etc/audit/rules.d/99-finalize.rules\nlogdir\t750\troot\troot\td\t/var/log/audit\nlogfile\t600\troot\troot\tf\t/var/log/audit/audit.log\nlogfile\t400\troot\troot\tf\t/var/log/audit/audit.log.1",
+   "reason": null,
+   "command": "find <path> -maxdepth 0 -printf '%m %u %g %y %p' for /etc/audit/audit.rules, /etc/audit/auditd.conf, /etc/audit/rules.d/*, the log_file directory and its files"
+  },
+  "audit_remote": {
+   "status": "ok",
+   "value": {
+    "plugin": {
+     "exists": true,
+     "text": "active = yes\ndirection = out\npath = /sbin/audisp-remote\ntype = always\nformat = string"
+    },
+    "remote": {
+     "exists": true,
+     "text": "remote_server = 192.0.2.50\nport = 60\ntransport = tcp"
+    }
+   },
+   "reason": null,
+   "command": "cat /etc/audit/plugins.d/au-remote.conf /etc/audit/audisp-remote.conf"
+  },
+  "path_stats": {
+   "status": "ok",
+   "value": "var_log\t755\troot\tsyslog\td\t/var/log\nsyslog\t640\tsyslog\tadm\tf\t/var/log/syslog\njournalctl\t740\troot\troot\tf\t/usr/bin/journalctl\naudit_tool\t755\troot\troot\tf\t/sbin/auditctl\naudit_tool\t755\troot\troot\tf\t/sbin/aureport\naudit_tool\t755\troot\troot\tf\t/sbin/ausearch\naudit_tool\t755\troot\troot\tf\t/sbin/autrace\naudit_tool\t755\troot\troot\tf\t/sbin/auditd\naudit_tool\t755\troot\troot\tf\t/sbin/augenrules\naudit_tool\t755\troot\troot\tf\t/sbin/audisp-remote",
+   "reason": null,
+   "command": "find <path> -maxdepth 0 -printf '%m %u %g %y %p' for /var/log, /var/log/syslog, /usr/bin/journalctl and the audit tools in /sbin"
+  },
+  "journal_entries": {
+   "status": "ok",
+   "value": {
+    "complete": true,
+    "count": 5,
+    "sample": "2750\troot\tsystemd-journal\td\t/run/log/journal\n2750\troot\tsystemd-journal\td\t/var/log/journal\n2750\troot\tsystemd-journal\td\t/var/log/journal/3b018e681c904487b11671b9c1987cce\n640\troot\tsystemd-journal\tf\t/var/log/journal/3b018e681c904487b11671b9c1987cce/system.journal\n640\troot\tsystemd-journal\tf\t/var/log/journal/3b018e681c904487b11671b9c1987cce/user-1000.journal",
+    "error": null
+   },
+   "reason": null,
+   "command": "find /run/log/journal /var/log/journal -printf '%m %u %g %y %p'"
+  },
+  "timedatectl": {
+   "status": "ok",
+   "value": "Timezone=Etc/UTC\nLocalRTC=no\nCanNTP=yes\nNTP=yes\nNTPSynchronized=yes\nTimeUSec=Mon 2026-11-09 14:02:11 UTC\nRTCTimeUSec=Mon 2026-11-09 14:02:11 UTC",
+   "reason": null,
+   "command": "timedatectl show"
+  },
+  "chrony_conf": {
+   "status": "ok",
+   "value": {
+    "files": [
+     "/etc/chrony/chrony.conf"
+    ],
+    "text": "/etc/chrony/chrony.conf\tserver tick.usno.navy.mil iburst maxpoll 16\n/etc/chrony/chrony.conf\tserver tock.usno.navy.mil iburst maxpoll 16\n/etc/chrony/chrony.conf\tserver ntp2.usno.navy.mil iburst maxpoll 16\n/etc/chrony/chrony.conf\tmakestep 1 -1"
+   },
+   "reason": null,
+   "command": "grep -E 'server|pool|peer|makestep' /etc/chrony/chrony.conf /etc/chrony/conf.d/*.conf /etc/chrony/sources.d/*.sources"
+  },
+  "ufw_status": {
+   "status": "ok",
+   "value": {
+    "installed": true,
+    "text": "Status: active\n\nTo                         Action      From\n--                         ------      ----\n22/tcp                     LIMIT       Anywhere"
+   },
+   "reason": null,
+   "command": "ufw status"
+  },
+  "apparmor_status": {
+   "status": "ok",
+   "value": "apparmor module is loaded.\n34 profiles are loaded.\n34 profiles are in enforce mode.\n0 profiles are in complain mode.\n0 profiles are in kill mode.\n0 profiles are in unconfined mode.\n2 processes have profiles defined.",
+   "reason": null,
+   "command": "aa-status"
+  },
+  "aide_cron": {
+   "status": "ok",
+   "value": {
+    "cron": "/etc/cron.daily/aide\tb71bb2cafaedf15ec3ac2f566f209d3260a37af0",
+    "shipped_sha1": "b71bb2cafaedf15ec3ac2f566f209d3260a37af0",
+    "shipped_md5": "4f1c3c1bd1f2b0d9a0e8f8d5f4d3c2b1",
+    "dpkg_md5": "4f1c3c1bd1f2b0d9a0e8f8d5f4d3c2b1"
+   },
+   "reason": null,
+   "command": "sha1sum /etc/cron.daily/aide /etc/cron.monthly/aide /usr/share/aide/config/cron.daily/aide; md5sum of the latter; its md5 in /var/lib/dpkg/info/aide-common.md5sums"
+  },
+  "aide_conf": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "/sbin/auditctl p+i+n+u+g+s+b+acl+xattrs+sha512\n/sbin/auditd p+i+n+u+g+s+b+acl+xattrs+sha512\n/sbin/ausearch p+i+n+u+g+s+b+acl+xattrs+sha512\n/sbin/aureport p+i+n+u+g+s+b+acl+xattrs+sha512\n/sbin/autrace p+i+n+u+g+s+b+acl+xattrs+sha512\n/sbin/augenrules p+i+n+u+g+s+b+acl+xattrs+sha512"
+   },
+   "reason": null,
+   "command": "cat /etc/aide/aide.conf"
+  },
+  "gdm_greeter": {
+   "status": "ok",
+   "value": {
+    "exists": false,
+    "text": null
+   },
+   "reason": null,
+   "command": "cat /etc/gdm3/greeter.dconf-defaults"
+  },
+  "gsettings": {
+   "status": "unavailable",
+   "value": null,
+   "reason": "gsettings not found (no GNOME settings installed)",
+   "command": "gsettings get <schema> <key> for media-keys logout, screensaver lock-enabled and lock-delay, session idle-delay"
+  },
+  "dmesg_nx": {
+   "status": "ok",
+   "value": "[    0.000000] NX (Execute Disable) protection: active",
+   "reason": null,
+   "command": "dmesg | grep -i 'execute disable'"
+  },
+  "cpu_flags": {
+   "status": "ok",
+   "value": "nx",
+   "reason": null,
+   "command": "grep flags /proc/cpuinfo | grep -o -w nx"
+  },
+  "wireless": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE\n face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22"
+   },
+   "reason": null,
+   "command": "cat /proc/net/wireless"
+  },
+  "block_devices": {
+   "status": "ok",
+   "value": "NAME=\"/dev/loop0\" TYPE=\"loop\" FSTYPE=\"squashfs\" MOUNTPOINT=\"/snap/core22/1663\" PKNAME=\"\"\nNAME=\"/dev/sda\" TYPE=\"disk\" FSTYPE=\"\" MOUNTPOINT=\"\" PKNAME=\"\"\nNAME=\"/dev/sda1\" TYPE=\"part\" FSTYPE=\"vfat\" MOUNTPOINT=\"/boot/efi\" PKNAME=\"/dev/sda\"\nNAME=\"/dev/sda2\" TYPE=\"part\" FSTYPE=\"ext4\" MOUNTPOINT=\"/boot\" PKNAME=\"/dev/sda\"\nNAME=\"/dev/sda3\" TYPE=\"part\" FSTYPE=\"crypto_LUKS\" MOUNTPOINT=\"\" PKNAME=\"/dev/sda\"\nNAME=\"/dev/mapper/dm_crypt-0\" TYPE=\"crypt\" FSTYPE=\"LVM2_member\" MOUNTPOINT=\"\" PKNAME=\"/dev/sda3\"\nNAME=\"/dev/mapper/ubuntu--vg-ubuntu--lv\" TYPE=\"lvm\" FSTYPE=\"ext4\" MOUNTPOINT=\"/\" PKNAME=\"/dev/mapper/dm_crypt-0\"\nNAME=\"/dev/mapper/ubuntu--vg-swap\" TYPE=\"lvm\" FSTYPE=\"swap\" MOUNTPOINT=\"[SWAP]\" PKNAME=\"/dev/mapper/dm_crypt-0\"",
+   "reason": null,
+   "command": "lsblk -P -p -o NAME,TYPE,FSTYPE,MOUNTPOINT,PKNAME"
+  },
+  "crypttab": {
+   "status": "ok",
+   "value": {
+    "exists": true,
+    "text": "dm_crypt-0 UUID=5d6e2a1c-7b2f-4c9e-9a51-0f0d3f2e6b11 none luks"
+   },
+   "reason": null,
+   "command": "cat /etc/crypttab"
+  },
+  "cmd_dirs_writable": {
+   "status": "ok",
+   "value": {
+    "complete": true,
+    "count": 0,
+    "sample": "",
+    "error": null
+   },
+   "reason": null,
+   "command": "find /bin /sbin /usr/bin /usr/sbin /usr/local/bin /usr/local/sbin -perm /022 -type d"
+  },
+  "cmd_files_writable": {
+   "status": "ok",
+   "value": {
+    "complete": true,
+    "count": 0,
+    "sample": "",
+    "error": null
+   },
+   "reason": null,
+   "command": "find /bin /sbin /usr/bin /usr/sbin /usr/local/bin /usr/local/sbin -perm /022 -type f"
+  },
+  "lib_files_writable": {
+   "status": "ok",
+   "value": {
+    "complete": true,
+    "count": 0,
+    "sample": "",
+    "error": null
+   },
+   "reason": null,
+   "command": "find /lib /lib64 /usr/lib -type f -name '*.so*' -perm /022"
+  },
+  "cmd_dirs_owner": {
+   "status": "ok",
+   "value": {
+    "complete": true,
+    "count": 0,
+    "sample": "",
+    "error": null
+   },
+   "reason": null,
+   "command": "find /bin /sbin /usr/bin /usr/sbin /usr/local/bin /usr/local/sbin ! -user root -type d"
+  },
+  "cmd_dirs_group": {
+   "status": "ok",
+   "value": {
+    "complete": true,
+    "count": 0,
+    "sample": "",
+    "error": null
+   },
+   "reason": null,
+   "command": "find /bin /sbin /usr/bin /usr/sbin /usr/local/bin /usr/local/sbin ! -group root -type d"
+  },
+  "cmd_files_owner": {
+   "status": "ok",
+   "value": {
+    "complete": true,
+    "count": 0,
+    "sample": "",
+    "error": null
+   },
+   "reason": null,
+   "command": "find /bin /sbin /usr/bin /usr/sbin /usr/local/bin /usr/local/sbin ! -user root -type f"
+  },
+  "cmd_files_group": {
+   "status": "ok",
+   "value": {
+    "complete": true,
+    "count": 0,
+    "sample": "",
+    "error": null
+   },
+   "reason": null,
+   "command": "find -L /bin /sbin /usr/bin /usr/sbin /usr/local/bin /usr/local/sbin ! -group root -type f ! -perm /2000"
+  },
+  "lib_dirs_owner": {
+   "status": "ok",
+   "value": {
+    "complete": true,
+    "count": 0,
+    "sample": "",
+    "error": null
+   },
+   "reason": null,
+   "command": "find /lib /usr/lib /lib64 ! -user root -type d"
+  },
+  "lib_dirs_group": {
+   "status": "ok",
+   "value": {
+    "complete": true,
+    "count": 0,
+    "sample": "",
+    "error": null
+   },
+   "reason": null,
+   "command": "find /lib /usr/lib /lib64 ! -group root -type d"
+  },
+  "lib_files_owner": {
+   "status": "ok",
+   "value": {
+    "complete": true,
+    "count": 0,
+    "sample": "",
+    "error": null
+   },
+   "reason": null,
+   "command": "find /lib /lib64 /usr/lib -type f -name '*.so*' ! -user root"
+  },
+  "lib_files_group": {
+   "status": "ok",
+   "value": {
+    "complete": true,
+    "count": 0,
+    "sample": "",
+    "error": null
+   },
+   "reason": null,
+   "command": "find /lib /lib64 /usr/lib -type f -name '*.so*' ! -group root"
+  },
+  "var_log_files": {
+   "status": "ok",
+   "value": {
+    "complete": true,
+    "count": 0,
+    "sample": "",
+    "error": null
+   },
+   "reason": null,
+   "command": "find /var/log -perm /137 ! -name '*[bw]tmp' ! -name '*lastlog' ! -name history.log ! -name eipp.log.xz -type f"
+  },
+  "public_dirs": {
+   "status": "ok",
+   "value": {
+    "complete": true,
+    "count": 0,
+    "sample": "",
+    "error": null
+   },
+   "reason": null,
+   "command": "find / /boot /boot/efi /dev/shm /run /run/lock /run/user/1000 -xdev -type d -perm -0002 ! -perm -1000"
+  }
+ }
+}

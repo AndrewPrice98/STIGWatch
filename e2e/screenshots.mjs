@@ -17,7 +17,7 @@ const PAGES = [
 
 const browser = await chromium.launch(process.env.E2E_CHANNEL ? { channel: process.env.E2E_CHANNEL } : {})
 try {
-  const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, colorScheme: 'dark' })
+  const ctx = await browser.newContext({ viewport: { width: 1400, height: 1000 }, colorScheme: 'dark' })
   const page = await ctx.newPage()
   for (const [name, url] of PAGES) {
     await page.goto(BASE + url)

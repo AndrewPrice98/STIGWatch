@@ -4,6 +4,8 @@ A DISA STIG compliance scanner for **Ubuntu 22.04 LTS** (STIG V2R10, 191 rules) 
 
 **Live demo:** https://stigwatch-demo.vercel.app/. The demo is a fictional fleet of 14 invented hosts with 8 weekly scans each; visitors browse read-only.
 
+The dashboard is a dark, table-first console: a sidebar with Fleet, Hosts, Findings, Drift, Remediation, Reports and Benchmarks, dense tables, flat charts and a single teal accent. Inter and the icon set are bundled with the app; nothing is loaded from another site (see [THIRD_PARTY.md](THIRD_PARTY.md)). Below 900 px the sidebar becomes a menu drawer.
+
 ![STIGWatch fleet overview](docs/screenshots/fleet.png)
 
 > STIGWatch is an independent tool. It is not a DISA product and does not replace the SCAP Compliance Checker, Evaluate-STIG or an assessor's review.
@@ -182,5 +184,7 @@ CI (`.github/workflows/ci.yml`): backend tests, benchmark, coverage and demo che
 ## Licence and content notice
 
 MIT licence, copyright (c) 2026 Andrew T. Price II: see [LICENSE](LICENSE).
+
+Frontend fonts and icons (Inter Variable under the SIL Open Font License 1.1, lucide-react under the ISC licence) are listed in [THIRD_PARTY.md](THIRD_PARTY.md).
 
 The STIG rule text in `backend/data/benchmarks/` (titles, discussion, check and fix text, identifiers) is DISA content from the Canonical Ubuntu 22.04 LTS STIG V2R10 and Microsoft Windows Server 2022 STIG V2R11. STIGs are works of the U.S. Government, published by DISA for public download, and the text is reproduced unmodified apart from whitespace normalisation. It is not covered by this project's MIT licence and is not endorsed by DISA. Each catalog file records its source URL and the SHA-256 of the DISA package. No distribution statement was found in the packages (see DECISIONS.md); this is not legal advice.

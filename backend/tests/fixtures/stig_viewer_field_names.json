@@ -8,6 +8,7 @@
   "HOST_MAC",
   "HOST_GUID",
   "HOST_FQDN",
+  "TARGET_COMMENT",
   "TECH_AREA",
   "TARGET_KEY",
   "WEB_OR_DATABASE",
@@ -30,7 +31,6 @@
  "vuln_attributes": [
   "Vuln_Num",
   "Severity",
-  "Weight",
   "Group_Title",
   "Rule_ID",
   "Rule_Ver",
@@ -48,7 +48,13 @@
   "Mitigation_Control",
   "Responsibility",
   "Security_Override_Guidance",
+  "Check_Content_Ref",
+  "Weight",
+  "Class",
   "STIGRef",
+  "TargetKey",
+  "STIG_UUID",
+  "LEGACY_ID",
   "CCI_REF"
  ],
  "vuln_children": [

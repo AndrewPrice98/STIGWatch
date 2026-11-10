@@ -59,7 +59,9 @@ def test_ckl_structure(seeded, benches):
     results = {r["stig_id"]: r for r in scan["results"]}
     for vuln, rule in zip(vulns, bench.rules):
         names = [s.find("VULN_ATTRIBUTE").text for s in vuln.findall("STIG_DATA")]
-        expected = [n for n in REF["vuln_attributes"] if n != "CCI_REF"] + ["CCI_REF"] * len(rule.ccis)
+        expected = []
+        for n in REF["vuln_attributes"]:
+            expected += ["CCI_REF"] * len(rule.ccis) if n == "CCI_REF" else                 ["LEGACY_ID"] * max(1, len(rule.legacy_ids)) if n == "LEGACY_ID" else [n]
         assert names == expected
         fields = {s.find("VULN_ATTRIBUTE").text: s.find("ATTRIBUTE_DATA").text
                   for s in vuln.findall("STIG_DATA")}
@@ -222,3 +224,80 @@ def test_sparkline():
     assert "<polyline" not in exports.sparkline([2]) and "<circle" in exports.sparkline([2])
     assert "no data" in exports.sparkline([])
     assert "&lt;" in exports.sparkline([1, 2], label="<b>")
+
+
+# -- DISA field fidelity ---------------------------------------------------------------------------
+
+def test_ckl_carries_the_disa_fields(seeded, benches):
+    host, scan = host_scan(seeded, "web-01")
+    bench = benches["ubuntu-22.04"]
+    root = SafeET.fromstring(exports.ckl(host, scan, bench))
+    info = {s.find("SID_NAME").text: s.findtext("SID_DATA") for s in root.iter("SI_DATA")}
+    assert info["classification"] == "UNCLASSIFIED"
+    assert DISCLAIMER in root.find("ASSET/TARGET_COMMENT").text
+    stig_uuid = info["uuid"]
+    for vuln, rule in zip(root.iter("VULN"), bench.rules):
+        f = {s.find("VULN_ATTRIBUTE").text: s.find("ATTRIBUTE_DATA").text for s in vuln.findall("STIG_DATA")}
+        assert rule.group_title.startswith("SRG-OS-") and f["Group_Title"] == rule.group_title
+        assert f["Class"] == "Unclass" and f["STIG_UUID"] == stig_uuid
+        assert f["TargetKey"] == rule.target_key and rule.target_key
+        assert f["Check_Content_Ref"] == "M"
+        assert "LEGACY_ID" in f
+
+
+def test_cklb_carries_the_disa_fields(seeded, benches):
+    host, scan = host_scan(seeded, "app-01")
+    bench = benches["windows-server-2022"]
+    rules = json.loads(exports.cklb(host, scan, bench))["stigs"][0]["rules"]
+    for rule, src in zip(rules, bench.rules):
+        assert rule["group_title"] == src.group_title and src.group_title.startswith("SRG-OS-")
+        assert rule["classification"] == "UNCLASSIFIED"
+        assert rule["group_tree"][0]["title"] == src.group_title
+        assert rule["target_key"] == src.target_key and rule["legacy_ids"] == list(src.legacy_ids)
+
+
+def test_parser_keeps_group_title_target_key_and_legacy_ids(tmp_path):
+    from stigwatch import benchmarks as bm
+    xml = (
+        '<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1" xmlns:dc="http://purl.org/dc/elements/1.1/" id="X_STIG">'
+        '<status date="2026-01-01">accepted</status><title>X</title>'
+        '<plain-text id="release-info">Release: 3 Benchmark Date: 05 Jan 2026</plain-text><version>1</version>'
+        '<Group id="V-1"><title>SRG-OS-000001-GPOS-00001</title><Rule id="SV-1r1_rule" severity="low">'
+        '<version>X-1</version><title>t</title><description>&lt;VulnDiscussion&gt;d&lt;/VulnDiscussion&gt;</description>'
+        '<reference><dc:identifier>5594</dc:identifier></reference>'
+        '<ident system="http://cyber.mil/legacy">V-1000</ident><ident system="http://cyber.mil/legacy">SV-1000_rule</ident>'
+        '<ident system="http://cyber.mil/cci">CCI-000366</ident><fixtext>f</fixtext>'
+        '<check system="c"><check-content>c</check-content></check></Rule></Group></Benchmark>')
+    rule = bm.parse_xccdf(xml.encode())["rules"][0]
+    assert rule["group_title"] == "SRG-OS-000001-GPOS-00001" and rule["target_key"] == "5594"
+    assert rule["legacy_ids"] == ["V-1000", "SV-1000_rule"]
+
+
+# -- historical checklists use the comments of their own time ----------------------------------------
+
+def test_old_scan_exports_use_the_comment_snapshot(conn):
+    from stigwatch import db as dbm
+    demo.seed(conn)
+    host = dbm.get_host_by_name(conn, "web-01")
+    scans = dbm.list_scans(conn, host["id"])
+    first, last = scans[0], scans[-1]
+    sid = "UBTU-22-211015"
+    conn.execute("DELETE FROM comments WHERE host_id = ?", (host["id"],))
+    conn.execute("UPDATE results SET comment = '' WHERE scan_id IN (?, ?)", (first["id"], last["id"]))
+    conn.execute("UPDATE results SET comment = 'week-1 note' WHERE scan_id = ? AND stig_id = ?", (first["id"], sid))
+    conn.execute("INSERT INTO comments (host_id, stig_id, text, updated_at) VALUES (?, ?, 'newer note', '2026-01-01T00:00:00Z')", (host["id"], sid))
+    conn.commit()
+    bench = demo.bundled_benchmark("ubuntu-22.04")
+
+    def comment(scan_id):
+        loaded = exports.load_scan(conn, scan_id)
+        root = SafeET.fromstring(exports.ckl(host, loaded, bench))
+        for v in root.iter("VULN"):
+            if any(s.findtext("ATTRIBUTE_DATA") == sid for s in v.findall("STIG_DATA")):
+                return v.findtext("COMMENTS") or ""
+
+    assert comment(first["id"]) == "week-1 note"      # not the note written later
+    assert comment(last["id"]) == "newer note"        # the latest scan shows the live comment
+    conn.execute("DELETE FROM comments WHERE host_id = ?", (host["id"],))
+    conn.commit()
+    assert comment(last["id"]) == ""                  # a deleted comment is not resurrected

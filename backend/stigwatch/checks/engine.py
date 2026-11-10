@@ -29,6 +29,7 @@ became logic / unmet_if / result_if_false / result_if_true.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from functools import cache
@@ -41,6 +42,8 @@ from ..benchmarks import Benchmark, load_benchmark
 from ..facts import Operator
 from ..facts import linux as linux_facts
 from ..facts import windows as windows_facts
+
+log = logging.getLogger(__name__)
 
 OPEN = "Open"
 NOT_A_FINDING = "NotAFinding"
@@ -98,6 +101,9 @@ class CheckSet:
     benchmark_id: str
     collector: str
     checks: dict[str, Check]
+    # Checks defined for rules the loaded benchmark release does not contain (a newer release
+    # dropped them). They are ignored; the rules that remain are scanned as before.
+    skipped: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -213,8 +219,10 @@ def _check_condition(cond: Any, where: str, facts: tuple[str, ...],
             raise ValueError(f"{where}: {op} takes a number")
 
 
-def build_checks(raw: Any, benchmark: Benchmark | None = None) -> CheckSet:
-    """Validate a parsed checks file. Raises ValueError on any problem."""
+def build_checks(raw: Any, benchmark: Benchmark | None = None, *, skip_missing: bool = False) -> CheckSet:
+    """Validate a parsed checks file. Raises ValueError on any problem. With ``skip_missing`` a
+    check whose STIG ID is not a rule of ``benchmark`` is left out (and listed in ``skipped``)
+    instead of being an error."""
     if not isinstance(raw, dict):
         raise ValueError("checks file must be a mapping")
     module = COLLECTORS.get(raw.get("collector"))
@@ -230,6 +238,7 @@ def build_checks(raw: Any, benchmark: Benchmark | None = None) -> CheckSet:
         raise ValueError("checks file needs a non-empty 'checks' list")
     ops: dict[str, Operator] = getattr(module, "OPERATORS", {})
     out: dict[str, Check] = {}
+    skipped: list[str] = []
     for item in items:
         if not isinstance(item, dict):
             raise ValueError("each check must be a mapping")
@@ -243,6 +252,9 @@ def build_checks(raw: Any, benchmark: Benchmark | None = None) -> CheckSet:
         if unknown:
             raise ValueError(f"{where}: unknown keys {sorted(unknown)}")
         if benchmark is not None and benchmark.rule(sid) is None:
+            if skip_missing:
+                skipped.append(sid)
+                continue
             raise ValueError(f"{where}: not a rule of {benchmark.benchmark_id}")
         facts = item.get("facts")
         if not isinstance(facts, list) or not facts or not all(isinstance(f, str) for f in facts):
@@ -270,7 +282,7 @@ def build_checks(raw: Any, benchmark: Benchmark | None = None) -> CheckSet:
                 raise ValueError(f"{where}: observe path uses fact {p[0]!r} not listed in facts")
         out[sid] = Check(sid, facts_t, item["logic"], rationale, rtrue, rfalse,
                          item.get("unmet_if"), item.get("na_if"), observe)
-    return CheckSet(bid, module.COLLECTOR, out)
+    return CheckSet(bid, module.COLLECTOR, out, tuple(skipped))
 
 
 @cache
@@ -279,7 +291,13 @@ def load_checks(benchmark_id: str) -> CheckSet:
     if path is None:
         raise ValueError(f"no checks for benchmark {benchmark_id!r}")
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    return build_checks(raw, load_benchmark(benchmark_id))
+    benchmark = load_benchmark(benchmark_id)
+    checkset = build_checks(raw, benchmark, skip_missing=True)
+    if checkset.skipped:
+        # An imported release dropped these rules: scanning continues without them.
+        log.warning("%s %s no longer contains %d rule(s) STIGWatch has checks for, ignored: %s",
+                    benchmark_id, benchmark.label, len(checkset.skipped), ", ".join(checkset.skipped))
+    return checkset
 
 
 # --------------------------------------------------------------------------- evaluation

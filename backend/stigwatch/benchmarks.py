@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import zipfile
 from dataclasses import dataclass, field
@@ -18,10 +17,13 @@ from typing import Any
 
 from defusedxml import ElementTree as SafeET
 
+from . import config
+
 SCHEMA_VERSION = 1
 SEVERITIES = ("high", "medium", "low")
 CAT_LABELS = {"high": "CAT I", "medium": "CAT II", "low": "CAT III"}
 CCI_SYSTEM = "http://cyber.mil/cci"
+LEGACY_SYSTEM = "http://cyber.mil/legacy"
 MAX_XCCDF_BYTES = 64 * 1024 * 1024
 MAX_ZIP_BYTES = 256 * 1024 * 1024
 
@@ -59,6 +61,9 @@ class Rule:
     fix_text: str
     ccis: tuple[str, ...] = ()
     ia_controls: str = ""
+    group_title: str = ""            # the group's title: the SRG requirement id, e.g. SRG-OS-000480-GPOS-00227
+    target_key: str = ""             # DPMS target identifier (Rule/reference/dc:identifier)
+    legacy_ids: tuple[str, ...] = () # earlier V- and SV- ids, when the XCCDF lists them
 
     @property
     def cat(self) -> str:
@@ -203,6 +208,20 @@ def parse_xccdf(xml_bytes: bytes, source_url: str = "") -> dict[str, Any]:
             }
             if emb.get("IAControls"):
                 entry["ia_controls"] = emb["IAControls"]
+            group_title = _text(_child(group, "title"))
+            if group_title:
+                entry["group_title"] = group_title
+            ref = _child(rule, "reference")
+            target_key = ""
+            if ref is not None:
+                ident = next((c for c in ref if _local(c.tag) == "identifier"), None)
+                target_key = _text(ident)
+            if target_key:
+                entry["target_key"] = target_key
+            legacy = [_text(i) for i in _children(rule, "ident")
+                      if i.get("system") == LEGACY_SYSTEM and _text(i)]
+            if legacy:
+                entry["legacy_ids"] = legacy
             rules.append(entry)
     return {
         "schema": SCHEMA_VERSION,
@@ -329,7 +348,8 @@ def _to_benchmark(data: dict[str, Any]) -> Benchmark:
             group_id=r["group_id"], rule_id=r["rule_id"], stig_id=r["stig_id"],
             severity=r["severity"], title=r["title"], discussion=r["discussion"],
             check_text=r["check_text"], fix_text=r["fix_text"], ccis=tuple(r["ccis"]),
-            ia_controls=r.get("ia_controls", ""),
+            ia_controls=r.get("ia_controls", ""), group_title=r.get("group_title", ""),
+            target_key=r.get("target_key", ""), legacy_ids=tuple(r.get("legacy_ids", ())),
         )
         for r in data["rules"]
     ]
@@ -344,8 +364,7 @@ def _to_benchmark(data: dict[str, Any]) -> Benchmark:
 
 def user_dir() -> Path:
     """Directory for locally imported benchmarks (STIGWATCH_DATA_DIR, else ~/.stigwatch)."""
-    base = os.environ.get("STIGWATCH_DATA_DIR")
-    root = Path(base) if base else Path.home() / ".stigwatch"
+    root = config.data_dir() or Path.home() / ".stigwatch"
     return root / "benchmarks"
 
 

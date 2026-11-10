@@ -275,6 +275,17 @@ def previous_scan_id(conn: sqlite3.Connection, scan_id: int) -> int | None:
     return int(prev["id"]) if prev else None
 
 
+def is_latest_scan(conn: sqlite3.Connection, scan_id: int) -> bool:
+    """True when no scan of the same host was collected after this one."""
+    scan = get_scan(conn, scan_id)
+    if scan is None:
+        return False
+    later = conn.execute(
+        "SELECT 1 FROM scans WHERE host_id = ? AND (collected_at > ? OR (collected_at = ? AND id > ?)) LIMIT 1",
+        (scan["host_id"], scan["collected_at"], scan["collected_at"], scan_id)).fetchone()
+    return later is None
+
+
 def scan_view(conn: sqlite3.Connection, scan_id: int) -> dict | None:
     """The scan in the shape ``drift.drift`` compares."""
     scan = get_scan(conn, scan_id)
@@ -322,11 +333,6 @@ def reevaluate_scan(conn: sqlite3.Connection, scan_id: int, benchmark: Benchmark
                                           for row in _prepare(results, cats)])
         conn.execute("UPDATE scans SET benchmark_id = ?, benchmark_release = ? WHERE id = ?",
                      (benchmark.benchmark_id, benchmark.label, scan_id))
-
-
-def delete_scan(conn: sqlite3.Connection, scan_id: int) -> None:
-    with conn:
-        conn.execute("DELETE FROM scans WHERE id = ?", (scan_id,))
 
 
 # -- drift and alerts ----------------------------------------------------------------------

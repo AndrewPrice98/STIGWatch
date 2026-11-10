@@ -711,9 +711,12 @@ async def upload_host_scan(_w: Annotated[str, Writer], host: Host, request: Requ
 
 # -- exports ----------------------------------------------------------------------------------
 
-def _download(content: bytes | str, media_type: str, filename: str, csp: str | None = None) -> Response:
+def _download(content: bytes | str, media_type: str, filename: str, csp: str | None = None,
+              notice: str = "") -> Response:
     body = content.encode("utf-8") if isinstance(content, str) else content
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    if notice:  # a checklist whose scan used another benchmark release than the installed one
+        headers["X-STIGWatch-Notice"] = notice.encode("ascii", "replace").decode("ascii")
     if csp:
         headers["Content-Security-Policy"] = csp
     return Response(body, media_type=media_type, headers=headers)
@@ -722,21 +725,22 @@ def _download(content: bytes | str, media_type: str, filename: str, csp: str | N
 def _checklist(scan: dict, conn: sqlite3.Connection):
     host = db.get_host(conn, scan["host_id"])
     bench = _need_bench(scan["benchmark_id"])
-    return host, exports.load_scan(conn, scan["id"]), bench
+    loaded = exports.load_scan(conn, scan["id"])
+    return host, loaded, bench, exports.for_scan(loaded, bench)[1]
 
 
 @protected.get("/api/scans/{scan_id}/export.ckl")
 def export_ckl(scan: Scan, conn: Conn):
-    host, loaded, bench = _checklist(scan, conn)
+    host, loaded, bench, notice = _checklist(scan, conn)
     return _download(exports.ckl(host, loaded, bench), "application/xml",
-                     exports.safe_filename(host["name"], "ckl", stamp=scan["collected_at"]))
+                     exports.safe_filename(host["name"], "ckl", stamp=scan["collected_at"]), notice=notice)
 
 
 @protected.get("/api/scans/{scan_id}/export.cklb")
 def export_cklb(scan: Scan, conn: Conn):
-    host, loaded, bench = _checklist(scan, conn)
+    host, loaded, bench, notice = _checklist(scan, conn)
     return _download(exports.cklb(host, loaded, bench), "application/json",
-                     exports.safe_filename(host["name"], "cklb", stamp=scan["collected_at"]))
+                     exports.safe_filename(host["name"], "cklb", stamp=scan["collected_at"]), notice=notice)
 
 
 @protected.get("/api/hosts/{host_id}/remediation")

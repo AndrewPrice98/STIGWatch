@@ -24,6 +24,7 @@ import re
 import sqlite3
 import uuid
 import xml.etree.ElementTree as ET
+from dataclasses import replace
 from typing import Any, Callable
 
 from . import benchmarks, db, remediation
@@ -36,6 +37,9 @@ CKL_STATUSES = ("Open", "NotAFinding", "Not_Applicable", "Not_Reviewed")
 CKLB_STATUS = {"Open": "open", "NotAFinding": "not_a_finding",
                "Not_Applicable": "not_applicable", "Not_Reviewed": "not_reviewed"}
 SEVERITY_WEIGHT = "10.0"
+CLASSIFICATION = "UNCLASSIFIED"      # DISA's public benchmarks are marked UNCLASSIFIED
+CLASS_UNCLASSIFIED = "Unclass"       # the VULN "Class" attribute STIG Viewer 2 writes
+CHECK_CONTENT_REF = "M"              # the check reference of a manual-check benchmark
 NAMESPACE = uuid.UUID("5d3c2c1e-6b0a-4a52-9a43-0c1d6a7e5a10")   # fixed: ids must be stable
 MAX_HOST_NAME = 255
 MAX_DETAIL = 6000
@@ -78,7 +82,8 @@ def _benchmark_date(iso: str) -> str:
 
 
 def _release_info(b: Benchmark) -> str:
-    return f"Release: {b.release} Benchmark Date: {_benchmark_date(b.date)}"
+    date = _benchmark_date(b.date) if b.date else ""
+    return f"Release: {b.release}" + (f" Benchmark Date: {date}" if date else "")
 
 
 def _stig_ref(b: Benchmark) -> str:
@@ -108,7 +113,33 @@ def load_scan(conn: sqlite3.Connection, scan_id: int) -> dict | None:
         return None
     scan["results"] = db.scan_results(conn, scan_id)
     scan["raw"] = db.get_raw(conn, scan_id)
+    scan["is_latest"] = db.is_latest_scan(conn, scan_id)
     return scan
+
+
+_LABEL = re.compile(r"V(\d+)R(\d+)")
+
+
+def for_scan(scan: dict, b: Benchmark) -> tuple[Benchmark, str]:
+    """The benchmark as the scan saw it, plus a notice when it differs from the installed one.
+
+    A scan is always evaluated against the release that was installed when it was stored
+    (``scan["benchmark_release"]``), and checklists are labelled with that release. STIGWatch
+    keeps one release of each benchmark, so when a newer one has been imported the rule text
+    comes from the installed release and the checklist says so; results for rules the installed
+    release no longer has cannot be listed and are counted in the notice."""
+    m = _LABEL.fullmatch(str(scan.get("benchmark_release") or ""))
+    if not m or (m[1], m[2]) == (str(b.version), str(b.release)):
+        return b, ""
+    shown = replace(b, version=m[1], release=m[2], date="")
+    ids = {r.stig_id for r in b.rules}
+    omitted = sum(1 for sid in _results_by_id(scan) if sid not in ids)
+    notice = (f"RELEASE MISMATCH: this scan was evaluated against {scan['benchmark_release']}, but the "
+              f"installed benchmark is {b.label}. Rule titles, discussion, check and fix text below are "
+              f"from {b.label} and may differ from {scan['benchmark_release']}.")
+    if omitted:
+        notice += f" {omitted} result(s) for rules that {b.label} no longer contains are not listed."
+    return shown, notice
 
 
 def _results_by_id(scan: dict) -> dict[str, dict]:
@@ -158,15 +189,23 @@ def finding_details(result: dict | None, scan: dict, b: Benchmark) -> str:
     return clean_text("\n".join(lines), MAX_DETAIL)
 
 
-def _comment(result: dict | None) -> str:
+def _comment(result: dict | None, scan: dict) -> str:
+    """The assessor comment that belongs to the scan being exported. The host's latest scan shows
+    the live comment (a deleted comment stays deleted); any earlier scan shows the comment as it
+    was when that scan was stored, so a later edit never rewrites history."""
     if not result:
         return ""
-    return clean_text(result.get("comment") or result.get("comment_at_scan") or "", 8000)
+    key = "comment" if scan.get("is_latest", True) else "comment_at_scan"
+    return clean_text(result.get(key) or "", 8000)
 
 
 def _status(result: dict | None) -> str:
     s = (result or {}).get("status")
     return s if s in CKL_STATUSES else "Not_Reviewed"
+
+
+def _target_comment(notice: str) -> str:
+    return clean_text(DISCLAIMER + (f" {notice}" if notice else ""))
 
 
 def _role(scan: dict) -> str:
@@ -192,6 +231,7 @@ def _stig_data(vuln: ET.Element, name: str, value: str | None) -> None:
 
 def ckl(host: dict, scan: dict, benchmark: Benchmark) -> bytes:
     """STIG Viewer 2 checklist: every rule of the benchmark, UTF-8 XML."""
+    benchmark, notice = for_scan(scan, benchmark)
     name = host_name_of(host)
     results = _results_by_id(scan)
     root = ET.Element("CHECKLIST")
@@ -199,16 +239,18 @@ def ckl(host: dict, scan: dict, benchmark: Benchmark) -> bytes:
     for tag, text in (
             ("ROLE", _role(scan)), ("ASSET_TYPE", "Computing"), ("MARKING", "NONE"),
             ("HOST_NAME", name), ("HOST_IP", ""), ("HOST_MAC", ""), ("HOST_GUID", ""),
-            ("HOST_FQDN", ""), ("TECH_AREA", ""), ("TARGET_KEY", ""), ("WEB_OR_DATABASE", "false"),
+            ("HOST_FQDN", ""), ("TARGET_COMMENT", _target_comment(notice)), ("TECH_AREA", ""),
+            ("TARGET_KEY", ""), ("WEB_OR_DATABASE", "false"),
             ("WEB_DB_SITE", ""), ("WEB_DB_INSTANCE", "")):
         _sub(asset, tag, text)
     stigs = ET.SubElement(root, "STIGS")
     istig = ET.SubElement(stigs, "iSTIG")
     info = ET.SubElement(istig, "STIG_INFO")
     for sid_name, data in (
-            ("version", benchmark.version), ("classification", ""), ("customname", ""),
+            ("version", benchmark.version), ("classification", CLASSIFICATION), ("customname", ""),
             ("stigid", _stig_name(benchmark)),
-            ("description", f"Checklist generated by STIGWatch from {benchmark.title}. {DISCLAIMER}"),
+            ("description", f"Checklist generated by STIGWatch from {benchmark.title}. {DISCLAIMER}"
+                            + (f" {notice}" if notice else "")),
             ("filename", str(benchmark.source_url).rsplit("/", 1)[-1]),
             ("releaseinfo", _release_info(benchmark)), ("title", benchmark.title),
             ("uuid", _u(name, benchmark.benchmark_id, "stig")), ("notice", "terms-of-use"),
@@ -218,13 +260,14 @@ def ckl(host: dict, scan: dict, benchmark: Benchmark) -> bytes:
         if data:
             _sub(si, "SID_DATA", data)
     ref = _stig_ref(benchmark)
+    stig_uuid = _u(name, benchmark.benchmark_id, "stig")
     for rule in benchmark.rules:
         result = results.get(rule.stig_id)
         v = ET.SubElement(istig, "VULN")
+        # Attribute order follows DISA's STIG Viewer 2 checklists (DECISIONS.md, Checklist formats).
         _stig_data(v, "Vuln_Num", rule.group_id)
         _stig_data(v, "Severity", rule.severity)
-        _stig_data(v, "Weight", SEVERITY_WEIGHT)
-        _stig_data(v, "Group_Title", rule.title)
+        _stig_data(v, "Group_Title", rule.group_title)
         _stig_data(v, "Rule_ID", rule.rule_id)
         _stig_data(v, "Rule_Ver", rule.stig_id)
         _stig_data(v, "Rule_Title", rule.title)
@@ -238,12 +281,19 @@ def ckl(host: dict, scan: dict, benchmark: Benchmark) -> bytes:
         for attr in ("Mitigations", "Potential_Impact", "Third_Party_Tools", "Mitigation_Control",
                      "Responsibility", "Security_Override_Guidance"):
             _stig_data(v, attr, "")
+        _stig_data(v, "Check_Content_Ref", CHECK_CONTENT_REF)
+        _stig_data(v, "Weight", SEVERITY_WEIGHT)
+        _stig_data(v, "Class", CLASS_UNCLASSIFIED)
         _stig_data(v, "STIGRef", ref)
+        _stig_data(v, "TargetKey", rule.target_key)
+        _stig_data(v, "STIG_UUID", stig_uuid)
+        for legacy in rule.legacy_ids or ("",):
+            _stig_data(v, "LEGACY_ID", legacy)
         for cci in rule.ccis:
             _stig_data(v, "CCI_REF", cci)
         _sub(v, "STATUS", _status(result))
         _sub(v, "FINDING_DETAILS", finding_details(result, scan, benchmark))
-        _sub(v, "COMMENTS", _comment(result))
+        _sub(v, "COMMENTS", _comment(result, scan))
         _sub(v, "SEVERITY_OVERRIDE", "")
         _sub(v, "SEVERITY_JUSTIFICATION", "")
     ET.indent(root, space="  ")
@@ -257,6 +307,7 @@ def ckl(host: dict, scan: dict, benchmark: Benchmark) -> bytes:
 
 def cklb(host: dict, scan: dict, benchmark: Benchmark) -> bytes:
     """STIG Viewer 3 checklist: every rule of the benchmark, UTF-8 JSON."""
+    benchmark, notice = for_scan(scan, benchmark)
     name = host_name_of(host)
     results = _results_by_id(scan)
     stig_uuid = _u(name, benchmark.benchmark_id, "stig")
@@ -267,14 +318,14 @@ def cklb(host: dict, scan: dict, benchmark: Benchmark) -> bytes:
         rules.append({
             "uuid": _u(name, benchmark.benchmark_id, rule.stig_id),
             "stig_uuid": stig_uuid,
-            "target_key": None, "stig_ref": None,
+            "target_key": rule.target_key or None, "stig_ref": None,
             "group_id": rule.group_id,
             "rule_id": rule.rule_id.removesuffix("_rule"),
             "rule_id_src": rule.rule_id,
-            "weight": SEVERITY_WEIGHT, "classification": "NONE",
+            "weight": SEVERITY_WEIGHT, "classification": CLASSIFICATION,
             "severity": rule.severity,
             "rule_version": rule.stig_id,
-            "group_title": clean_text(rule.title),
+            "group_title": clean_text(rule.group_title),
             "rule_title": clean_text(rule.title),
             "fix_text": clean_text(rule.fix_text),
             "false_positives": None, "false_negatives": None,
@@ -284,15 +335,15 @@ def cklb(host: dict, scan: dict, benchmark: Benchmark) -> bytes:
             "mitigations": None, "potential_impacts": None, "third_party_tools": None,
             "mitigation_control": None, "responsibility": None, "security_override_guidance": None,
             "ia_controls": rule.ia_controls or None,
-            "check_content_ref": {"href": "", "name": "M"},
-            "legacy_ids": [],
-            "group_tree": [{"id": rule.group_id, "title": clean_text(rule.title),
+            "check_content_ref": {"href": "", "name": CHECK_CONTENT_REF},
+            "legacy_ids": list(rule.legacy_ids),
+            "group_tree": [{"id": rule.group_id, "title": clean_text(rule.group_title),
                             "description": "<GroupDescription></GroupDescription>"}],
             "createdAt": stamp, "updatedAt": stamp,
             "STIGUuid": stig_uuid,
             "status": CKLB_STATUS[_status(result)],
             "overrides": {},
-            "comments": _comment(result),
+            "comments": _comment(result, scan),
             "finding_details": finding_details(result, scan, benchmark),
             "ccis": list(rule.ccis),
         })
@@ -303,7 +354,7 @@ def cklb(host: dict, scan: dict, benchmark: Benchmark) -> bytes:
         "active": False, "mode": 1, "has_path": True,
         "target_data": {
             "target_type": "Computing", "host_name": name, "ip_address": "", "mac_address": "",
-            "fqdn": "", "comments": DISCLAIMER, "role": _role(scan),
+            "fqdn": "", "comments": _target_comment(notice), "role": _role(scan),
             "is_web_database": False, "technology_area": "", "web_db_site": "", "web_db_instance": "",
         },
         "stigs": [{

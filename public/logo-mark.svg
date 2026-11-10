@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">
+  <style>
+    .base { fill: #a3acb9; }
+    .drift { fill: #2bb3a3; }
+    @media (prefers-color-scheme: light) { .base { fill: #4b5563; } .drift { fill: #12887b; } }
+  </style>
+  <rect class="base" x="4" y="5" width="17" height="6" rx="1"/>
+  <rect class="drift" x="11" y="13" width="17" height="6" rx="1"/>
+  <rect class="base" x="4" y="21" width="17" height="6" rx="1"/>
+</svg>

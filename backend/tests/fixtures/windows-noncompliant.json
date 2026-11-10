@@ -1116,11 +1116,12 @@
      "TFTP-Client": "InstallPending",
      "FS-SMB1": "Installed",
      "PowerShell-v2": "Installed",
-     "AD-Domain-Services": "Available"
+     "AD-Domain-Services": "Available",
+     "Hyper-V": "Available"
     }
    },
    "reason": null,
-   "command": "Get-WindowsFeature -Name Fax,Web-Ftp-Service,PNRP,Simple-TCPIP,Telnet-Client,TFTP-Client,FS-SMB1,PowerShell-v2,AD-Domain-Services"
+   "command": "Get-WindowsFeature -Name Fax,Web-Ftp-Service,PNRP,Simple-TCPIP,Telnet-Client,TFTP-Client,FS-SMB1,PowerShell-v2,AD-Domain-Services,Hyper-V"
   },
   "services": {
    "status": "ok",

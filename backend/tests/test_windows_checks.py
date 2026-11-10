@@ -34,10 +34,13 @@ CAT1_FULL = {
 # CAT I rules that need a human: applicability (DC vs member) is still decided from facts.
 CAT1_EVIDENCE = {
     "WN22-DC-000010", "WN22-DC-000090", "WN22-DC-000100", "WN22-DC-000110", "WN22-DC-000150",
-    "WN22-DC-000290", "WN22-DC-000300", "WN22-MS-000010",
+    "WN22-DC-000290", "WN22-DC-000300",
 }
+# CAT I rules with one decisive outcome (Open); the other outcome needs a human.
+CAT1_PARTIAL = {"WN22-MS-000010"}
 CAT1_MANUAL = {"WN22-00-000030"}
 DC_CAT1 = {s for s in CAT1_FULL | CAT1_EVIDENCE if s.startswith("WN22-DC-")}
+ALL_CAT1 = CAT1_FULL | CAT1_PARTIAL | CAT1_EVIDENCE | CAT1_MANUAL
 
 
 def load(name: str) -> dict:
@@ -86,10 +89,11 @@ def test_coverage_at_least_50_and_every_host_checkable_cat1(bench):
     decisive = {s for s, k in kinds.items() if k != "evidence"}
     assert len(decisive) >= 50
     cat1 = {r.stig_id for r in bench.rules if r.severity == "high"}
-    assert len(cat1) == 31 == len(CAT1_FULL | CAT1_EVIDENCE | CAT1_MANUAL)
-    assert cat1 == CAT1_FULL | CAT1_EVIDENCE | CAT1_MANUAL
+    assert len(cat1) == 31 == len(ALL_CAT1)
+    assert cat1 == ALL_CAT1
     print("CAT I decided from facts:", ", ".join(sorted(CAT1_FULL)))
     assert {s for s in cat1 if kinds.get(s) == "full"} == CAT1_FULL
+    assert {s for s in cat1 if kinds.get(s) == "partial"} == CAT1_PARTIAL
     assert {s for s in cat1 if kinds.get(s) == "evidence"} == CAT1_EVIDENCE
     assert {s for s, c in cov.manual if c == "CAT I"} == CAT1_MANUAL
     assert sum(row["total"] for row in cov.by_cat.values()) == len(bench.rules) == 277
@@ -559,13 +563,110 @@ def test_collector_never_reads_secrets():
 def test_collector_runs_on_windows(tmp_path):
     out = tmp_path / "out.json"
     shell = os.environ.get("STIGWATCH_TEST_POWERSHELL", "powershell")
+    temp = tmp_path / "temp"
+    temp.mkdir()
+    env = dict(os.environ, TEMP=str(temp), TMP=str(temp))  # the collector's temp exports go here
     proc = subprocess.run([shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(COLLECTOR),
-                           "-OutFile", str(out), "-RedactNames"], capture_output=True, text=True, timeout=600)
+                           "-OutFile", str(out), "-RedactNames"], capture_output=True, text=True, timeout=600,
+                          env=env)
     assert proc.returncode == 0, proc.stderr
     data = json.loads(out.read_text(encoding="utf-8"))
     windows.validate(data)
     assert set(data["facts"]) == set(windows.FACTS) - set(windows.DERIVED)
     info = windows.summary(data)
     assert info["ok"] >= 10
-    assert not list(tmp_path.glob("stigwatch-*"))
+    assert list(temp.iterdir()) == []  # the secedit and auditpol exports were deleted
     assert len(engine.evaluate(data)) == 277
+
+
+# --------------------------------------------------------------------------- review fix round 1
+
+def test_ms_000010_domain_admins_on_member_server():
+    data = load("member-compliant")
+    res = results(data)["WN22-MS-000010"]
+    assert res.status == NR and "Server Admins - APP" in str(res.evidence)
+    members = data["facts"]["local_admins"]["value"]["members"]
+    members.append({"name": "EXAMPLE\\Domain Admins", "sid": "S-1-5-21-1004336348-1177238915-682003330-512",
+                    "object_class": "Group", "principal_source": "ActiveDirectory"})
+    r = results(data)["WN22-MS-000010"]
+    assert r.status == OPEN
+    assert "Domain Admins" in str(r.evidence)
+    # standalone: no Domain Admins to replace, members need review; domain controller: N/A
+    assert results(load("standalone"))["WN22-MS-000010"].status == NR
+    assert results(load("dc"))["WN22-MS-000010"].status == NA
+    # a member without a SID: whether Domain Admins is present is unknown
+    members.append({"name": "orphan", "sid": "", "object_class": "User", "principal_source": "Unknown"})
+    assert results(data)["WN22-MS-000010"].status == NR
+
+
+def test_collect_parse_require(capsys):
+    path = str(FIXTURES / "windows-unprivileged.json")
+    assert main(["collect-parse", "windows", path, "--require", "registry,domain_role,acls"]) == 0
+    capsys.readouterr()
+    assert main(["collect-parse", "windows", path, "--require", "registry,security_policy, audit_policy"]) == 1
+    assert "required facts not read: security_policy, audit_policy" in capsys.readouterr().err
+    assert main(["collect-parse", "windows", path, "--require", "no_such_fact"]) == 1
+    full = str(FIXTURES / "windows-member-compliant.json")
+    assert main(["collect-parse", "windows", full, "--min-ok", "20", "--require",
+                 "security_policy,user_rights,audit_policy,registry,features,domain_role,local_accounts,acls"]) == 0
+
+
+def test_bitlocker_requires_full_encryption():
+    data = load("member-compliant")
+    vol = data["facts"]["bitlocker"]["value"]["volumes"][1]
+    vol.update(volume_status="EncryptionInProgress", encryption_percentage=42)
+    assert results(data)["WN22-00-000250"].status == NR
+    vol.update(volume_status="FullyEncrypted", encryption_percentage=100)
+    assert results(data)["WN22-00-000250"].status == NAF
+    vol.update(volume_status="5", encryption_percentage=100)  # an unnamed status at 100%: encrypted
+    assert results(data)["WN22-00-000250"].status == NAF
+    vol.update(protection_status="Off", volume_status="FullyDecrypted", encryption_percentage=0)
+    assert results(data)["WN22-00-000250"].status == OPEN
+
+
+def test_fips_sharepoint_applicability_on_presence():
+    data = load("member-compliant")
+    data["facts"]["services"]["value"]["SPTimerV4"] = {"present": True, "status": "Stopped",
+                                                       "start_type": "Disabled"}
+    assert results(data)["WN22-SO-000360"].status == NA
+
+
+def test_eventvwr_only_full_or_modify_is_open():
+    data = load("member-compliant")
+    aces = data["facts"]["acls"]["value"]["eventvwr"]["aces"]
+    aces.append({"sid": "S-1-5-32-545", "type": "Allow", "rights": 0x116, "inherited": False,
+                 "inheritance": 0, "propagation": 0})  # write data only
+    r = results(data)["WN22-AU-000060"]
+    assert r.status == NR and "to review" in str(r.evidence)
+    aces.append({"sid": "S-1-5-11", "type": "Allow", "rights": 0x1301BF, "inherited": False,
+                 "inheritance": 0, "propagation": 0})  # Modify
+    assert results(data)["WN22-AU-000060"].status == OPEN
+    aces[-1]["rights"] = 0x10000000  # GENERIC_ALL
+    assert results(data)["WN22-AU-000060"].status == OPEN
+
+
+def test_ntds_folder_error_keeps_other_acls():
+    data = load("dc")
+    acls = data["facts"]["acls"]["value"]
+    acls["ntds_files"].append({"path": "D:\\NTDSLogs", "error": "Access to the path is denied."})
+    res = results(data)
+    assert res["WN22-DC-000070"].status == NR
+    assert "Access to the path is denied" in str(res["WN22-DC-000070"].evidence)
+    assert res["WN22-AU-000030"].status == NAF and res["WN22-DC-000080"].status == NAF
+    code = _code(COLLECTOR.read_text(encoding="utf-8"))
+    assert re.search(r"try \{\s*foreach \(\$f in @\(Get-ChildItem -LiteralPath \$d -File -ErrorAction Stop\)\)"
+                     r".*?\} catch \{\s*\$files \+= \[ordered\]@\{ path = \$d; error =", code, re.S)
+
+
+def test_symbolic_links_virtual_machines_only_with_hyper_v():
+    data = load("member-compliant")
+    data["facts"]["user_rights"]["value"]["SeCreateSymbolicLinkPrivilege"] = "*S-1-5-32-544,*S-1-5-83-0"
+    assert results(data)["WN22-UR-000090"].status == OPEN  # Hyper-V available, not installed
+    data["facts"]["features"]["value"]["states"]["Hyper-V"] = "Installed"
+    assert results(data)["WN22-UR-000090"].status == NAF
+    data["facts"]["features"] = unavailable("The requested operation requires elevation.")
+    assert results(data)["WN22-UR-000090"].status == NR
+    # Administrators only needs no feature fact
+    data["facts"]["user_rights"]["value"]["SeCreateSymbolicLinkPrivilege"] = "*S-1-5-32-544"
+    assert results(data)["WN22-UR-000090"].status == NAF
+    assert "Win32_Tpm" in COLLECTOR.read_text(encoding="utf-8").split("#>")[0]

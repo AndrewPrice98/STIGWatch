@@ -118,7 +118,7 @@ checks:
     - {path: bitlocker.unknown_count, eq: 0}
   unmet_if: {path: bitlocker.unprotected_count, ge: 1}
   observe: [bitlocker.volumes]
-  rationale: 'Data at rest must be encrypted: every fixed volume must have BitLocker protection on. A documented and approved reason to omit OS-level encryption (for example hypervisor or storage-array
+  rationale: 'Data at rest must be encrypted: every fixed volume must have BitLocker protection on and be fully encrypted (an encryption still in progress needs review). A documented and approved reason to omit OS-level encryption (for example hypervisor or storage-array
     encryption) makes the rule not applicable, which the assessor records.'
 - stig_id: WN22-00-000280
   facts: [firewall, services]
@@ -363,7 +363,8 @@ checks:
     acl:
       full: [S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464]
       read: any
-  rationale: Only TrustedInstaller may have Full control or Modify on Eventvwr.exe; others at most read & execute. Not applicable to Server Core.
+      finding: modify
+  rationale: Only TrustedInstaller may have Full control or Modify on Eventvwr.exe. Another principal with Full control or Modify is a finding; any other grant beyond read & execute (for example write only) is not what the check text names and needs review. Not applicable to Server Core.
 - stig_id: WN22-AU-000070
   facts: [audit_policy]
   logic: {path: audit_policy.credential_validation.success, eq: true}
@@ -1157,11 +1158,17 @@ checks:
 - stig_id: WN22-MS-000010
   facts: [domain_role, local_admins]
   na_if: *id020
-  logic: {path: local_admins.count, ge: 0}
+  logic:
+    all:
+    - {path: domain_role.role, eq: member}
+    - {path: local_admins.domain_admins_member, eq: false}
   result_if_true: Not_Reviewed
-  result_if_false: Not_Reviewed
-  observe: [local_admins.members]
-  rationale: Only administrators responsible for the system may be members of the local Administrators group; the members are listed for the assessor. Not applicable to domain controllers.
+  unmet_if:
+    all:
+    - {path: domain_role.role, eq: member}
+    - {path: local_admins.domain_admins_member, eq: true}
+  observe: [local_admins.members, local_admins.sids]
+  rationale: Only administrators responsible for the system may be members of the local Administrators group. On a domain-joined member server Domain Admins (S-1-5-21-*-512) must be replaced by a member server administrator group, so its membership is a finding; whether the other members are responsible for the system cannot be proven on the host and needs review (the members are listed). Not applicable to domain controllers.
 - stig_id: WN22-MS-000020
   facts: [domain_role, registry]
   na_if:
@@ -1541,13 +1548,13 @@ checks:
 - stig_id: WN22-SO-000360
   facts: [registry, services]
   na_if:
-    path: [services, SPTimerV4, status]
-    eq: Running
+    path: [services, SPTimerV4, present]
+    eq: true
   logic:
     path: [registry, HKLM\SYSTEM\CurrentControlSet\Control\Lsa\FIPSAlgorithmPolicy, Enabled, value]
     eq: 1
   rationale: Must be configured to use FIPS-compliant algorithms for encryption, hashing, and signing. HKLM\SYSTEM\CurrentControlSet\Control\Lsa\FIPSAlgorithmPolicy\Enabled must be 1. Not applicable when
-    SharePoint runs on the host (SharePoint Timer service SPTimerV4 running).
+    SharePoint is installed on the host (the SharePoint Timer service SPTimerV4 is present).
 - stig_id: WN22-SO-000370
   facts: [registry]
   logic:
@@ -1678,11 +1685,14 @@ checks:
   logic: {path: user_rights.SeCreatePermanentPrivilege, empty: true}
   rationale: The SeCreatePermanentPrivilege user right must not be assigned to any account or group.
 - stig_id: WN22-UR-000090
-  facts: [user_rights]
+  facts: [features, user_rights]
   logic:
-    path: user_rights.SeCreateSymbolicLinkPrivilege
-    subset: [S-1-5-32-544, S-1-5-83-0]
-  rationale: The SeCreateSymbolicLinkPrivilege user right must only be assigned to Administrators, Virtual Machines. Virtual Machines (S-1-5-83-0) is allowed on Hyper-V hosts.
+    any:
+    - {path: user_rights.SeCreateSymbolicLinkPrivilege, subset: [S-1-5-32-544]}
+    - all:
+      - {path: [features, Hyper-V], eq: Installed}
+      - {path: user_rights.SeCreateSymbolicLinkPrivilege, subset: [S-1-5-32-544, S-1-5-83-0]}
+  rationale: The SeCreateSymbolicLinkPrivilege user right must only be assigned to Administrators; Virtual Machines (S-1-5-83-0) is also allowed when the Hyper-V role is installed.
 - stig_id: WN22-UR-000100
   facts: [user_rights]
   logic:

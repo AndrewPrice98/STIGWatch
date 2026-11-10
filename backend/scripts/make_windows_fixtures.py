@@ -54,7 +54,7 @@ AUDITPOL_CMD = 'auditpol /backup /file:"<temp file in $env:TEMP, deleted after r
 REGISTRY_CMD = ("registry (read-only OpenBaseKey/OpenSubKey): the values listed in collect-windows.ps1 "
                 "$RegistryValues; HKCU is the account running the collector")
 FEATURE_NAMES = ["Fax", "Web-Ftp-Service", "PNRP", "Simple-TCPIP", "Telnet-Client", "TFTP-Client",
-                 "FS-SMB1", "PowerShell-v2", "AD-Domain-Services"]
+                 "FS-SMB1", "PowerShell-v2", "AD-Domain-Services", "Hyper-V"]
 SERVICE_NAMES = ["WinDefend", "MpsSvc", "W32Time", "FTPSVC", "SPTimerV4", "MSExchangeServiceHost", "NTDS"]
 COMMANDS = {
     "os": ("Get-CimInstance Win32_OperatingSystem; registry HKLM\\SOFTWARE\\Microsoft\\Windows NT\\"
@@ -385,7 +385,8 @@ def member_compliant(host: str = "ws22-app-01") -> dict:
         "features": ok("features", {"source": "Get-WindowsFeature", "states": {
             "Fax": "Available", "Web-Ftp-Service": "Available", "PNRP": "Available",
             "Simple-TCPIP": "Available", "Telnet-Client": "Available", "TFTP-Client": "Available",
-            "FS-SMB1": "Removed", "PowerShell-v2": "Removed", "AD-Domain-Services": "Available"}}),
+            "FS-SMB1": "Removed", "PowerShell-v2": "Removed", "AD-Domain-Services": "Available",
+            "Hyper-V": "Available"}}),
         "services": ok("services", {
             "WinDefend": {"present": True, "status": "Running", "start_type": "Automatic"},
             "MpsSvc": {"present": True, "status": "Running", "start_type": "Automatic"},

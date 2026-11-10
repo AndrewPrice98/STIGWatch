@@ -21,7 +21,8 @@
 
   Commands run (all read-only): secedit /export, auditpol /backup,
   auditpol /get /category:* /r, Get-CimInstance (Win32_OperatingSystem,
-  Win32_ComputerSystem, Win32_Volume, Win32_UserAccount, Win32_DeviceGuard),
+  Win32_ComputerSystem, Win32_Volume, Win32_UserAccount, Win32_DeviceGuard,
+  root\cimv2\Security\MicrosoftTpm Win32_Tpm),
   Get-Partition, Get-WindowsFeature, Get-WindowsOptionalFeature -Online, Get-Service,
   Get-LocalUser, Get-LocalGroupMember, Get-MpComputerStatus, Get-NetFirewallProfile,
   Get-SmbServerConfiguration, Get-BitLockerVolume, Get-Tpm, Confirm-SecureBootUEFI,
@@ -442,8 +443,8 @@ Add-Fact 'registry' 'registry (read-only OpenBaseKey/OpenSubKey): the values lis
 
 # --- roles, features and services ------------------------------------------
 
-$FeatureNames = @('Fax', 'Web-Ftp-Service', 'PNRP', 'Simple-TCPIP', 'Telnet-Client', 'TFTP-Client', 'FS-SMB1', 'PowerShell-v2', 'AD-Domain-Services')
-$OptionalFeatureNames = @('TelnetClient', 'TFTP', 'SimpleTCP', 'SMB1Protocol', 'MicrosoftWindowsPowerShellV2Root', 'IIS-FTPSvc')
+$FeatureNames = @('Fax', 'Web-Ftp-Service', 'PNRP', 'Simple-TCPIP', 'Telnet-Client', 'TFTP-Client', 'FS-SMB1', 'PowerShell-v2', 'AD-Domain-Services', 'Hyper-V')
+$OptionalFeatureNames = @('Microsoft-Hyper-V', 'TelnetClient', 'TFTP', 'SimpleTCP', 'SMB1Protocol', 'MicrosoftWindowsPowerShellV2Root', 'IIS-FTPSvc')
 
 Add-Fact 'features' ('Get-WindowsFeature -Name ' + ($FeatureNames -join ',')) {
     if (Get-Command -Name Get-WindowsFeature -ErrorAction SilentlyContinue) {
@@ -695,7 +696,12 @@ Add-Fact 'acls' 'Get-WinEvent -ListLog Application,Security,System (LogFilePath)
         }
         $files = @()
         foreach ($d in $dirs) {
-            foreach ($f in @(Get-ChildItem -LiteralPath $d -File -ErrorAction Stop)) { $files += Get-AclEntry $f.FullName }
+            # One unreadable folder becomes an error entry; the other permissions are kept.
+            try {
+                foreach ($f in @(Get-ChildItem -LiteralPath $d -File -ErrorAction Stop)) { $files += Get-AclEntry $f.FullName }
+            } catch {
+                $files += [ordered]@{ path = $d; error = (($_.Exception.Message -replace '\s+', ' ')).Trim() }
+            }
         }
         $result.ntds_dirs = $dirs
         $result.ntds_files = $files

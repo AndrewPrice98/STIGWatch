@@ -114,10 +114,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Validate the PowerShell 7 output
         working-directory: backend
-        run: python -m stigwatch collect-parse windows ../out-pwsh.json --min-ok 15
+        run: python -m stigwatch collect-parse windows ../out-pwsh.json --min-ok 20 --require security_policy,user_rights,audit_policy,registry,features,domain_role,local_accounts,acls
       - name: Validate the Windows PowerShell 5.1 output
         working-directory: backend
-        run: python -m stigwatch collect-parse windows ../out-ps51.json --min-ok 15
+        run: python -m stigwatch collect-parse windows ../out-ps51.json --min-ok 20 --require security_policy,user_rights,audit_policy,registry,features,domain_role,local_accounts,acls
+      - name: Audit policy was read locale-independently (auditpol /backup)
+        working-directory: backend
+        shell: python
+        run: |
+          import json
+          for name in ("pwsh", "ps51"):
+              fact = json.load(open(f"../out-{name}.json", encoding="utf-8"))["facts"]["audit_policy"]
+              assert fact["status"] == "ok", (name, fact.get("reason"))
+              assert fact["value"]["source"] == "backup", (name, fact["command"])
+              print(name, "audit_policy source:", fact["value"]["source"])
       - name: Scan the PowerShell 7 output
         working-directory: backend
         run: python -m stigwatch scan ../out-pwsh.json

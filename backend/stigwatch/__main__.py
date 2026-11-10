@@ -72,10 +72,16 @@ def _cmd_collect_parse(args: argparse.Namespace) -> int:
         print(f"  missing      {fid}")
     for fid in info["unknown"]:
         print(f"  unknown      {fid} (ignored)")
+    status = 0
     if args.min_ok is not None and info["ok"] < args.min_ok:
         print(f"only {info['ok']} facts read; at least {args.min_ok} required", file=sys.stderr)
-        return 1
-    return 0
+        status = 1
+    required = [f.strip() for f in (args.require or "").split(",") if f.strip()]
+    not_read = [f for f in required if f not in info["read"]]
+    if not_read:
+        print("required facts not read: " + ", ".join(not_read), file=sys.stderr)
+        status = 1
+    return status
 
 
 def _cmd_scan(args: argparse.Namespace) -> int:
@@ -136,6 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
     cp.add_argument("collector", choices=["linux", "windows"], help="collector type")
     cp.add_argument("file", help="collector JSON file")
     cp.add_argument("--min-ok", type=int, help="fail when fewer facts were read")
+    cp.add_argument("--require", help="comma-separated fact ids that must have been read")
     cp.set_defaults(func=_cmd_collect_parse)
 
     sc = sub.add_parser("scan", help="evaluate a collector file against its benchmark")

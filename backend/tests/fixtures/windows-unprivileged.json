@@ -879,7 +879,7 @@
    "status": "unavailable",
    "value": null,
    "reason": "The requested operation requires elevation.",
-   "command": "Get-WindowsFeature -Name Fax,Web-Ftp-Service,PNRP,Simple-TCPIP,Telnet-Client,TFTP-Client,FS-SMB1,PowerShell-v2,AD-Domain-Services"
+   "command": "Get-WindowsFeature -Name Fax,Web-Ftp-Service,PNRP,Simple-TCPIP,Telnet-Client,TFTP-Client,FS-SMB1,PowerShell-v2,AD-Domain-Services,Hyper-V"
   },
   "services": {
    "status": "ok",

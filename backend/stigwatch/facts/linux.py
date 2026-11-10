@@ -182,6 +182,7 @@ def summary(data: dict) -> dict:
         "collected_at": data["collected_at"],
         "facts": len(raw),
         "ok": len(ok),
+        "read": ok,
         "unavailable": unavailable,
         "unknown": sorted(f for f in raw if f not in FACTS),
         "missing": sorted(f for f in FACTS if f not in raw and f not in DERIVED),

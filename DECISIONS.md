@@ -186,7 +186,7 @@ The two skips are Linux-only (the full collector run and the permission-denied p
 - New generic feature: a fact may carry `partial`, a mapping that follows its value's keys and gives the reason a part could not be read. The evidence then shows `unavailable: <reason>` instead of "not reported". Windows uses it for a registry value that was access-denied and for a user right granted to a name rather than a SID.
 - A Not_Applicable result names only the facts of `na_if` (context `observe` paths are no longer listed there).
 - `show_path` brackets segments containing a backslash, so registry keys read as `registry[HKLM\...].Name.value`.
-- The coverage headline separates checks that can decide a result from evidence/applicability-only checks: `254 of 277 rules automated (228 can decide a result, 26 evidence or applicability only), 23 manual review`.
+- The coverage headline separates checks that can decide a result from evidence/applicability-only checks: `254 of 277 rules automated (229 can decide a result, 25 evidence or applicability only), 23 manual review` (after review fix round 1).
 - Windows-specific operators live in `facts/windows.py`: `has_sid` (a user right lists a SID or a pattern such as `S-1-5-21-*-512`), `acl` (Allow entries no wider than full control for named SIDs and read & execute for others; a "standard" list says which wider grants are findings and which need review) and `dod_banner` (the Linux banner comparison).
 
 ### Collector (`collectors/collect-windows.ps1`)
@@ -217,7 +217,7 @@ The two skips are Linux-only (the full collector run and the permission-denied p
   - UC-000010: only the collector account's HKCU is read, so a value of 1 is a finding but a compliant value does not cover other profiles.
   - UR-000170: an Auditors group may also hold the right.
 - **Evidence or applicability only** (Not_Applicable when the domain role proves it, otherwise Not_Reviewed with the facts shown):
-  - DC-000010 and MS-000010: who may administer the system is a judgement; members are listed.
+  - DC-000010: who may administer the system is a judgement; members are listed.
   - DC-000090 to 000220, 000290 to 000310, 000406 and 000430: Active Directory objects, auditing, mappings and PKI judgements, or an LDAP bind the read-only collector does not make.
   - 00-000420/430: the IIS FTP configuration is not collected; Not_Applicable when the FTP service is not installed.
   - PK-000010 to 000030: DoD certificate presence is supporting evidence only.
@@ -225,7 +225,7 @@ The two skips are Linux-only (the full collector run and the permission-denied p
 - **AC-000010 / AC-000030**: secedit omits LockoutDuration and ResetLockoutCount when there is no lockout threshold. That is Not_Reviewed here (AC-000020 reports the threshold). A LockoutDuration of 0 or -1 (until an administrator unlocks) is not a finding.
 - **AC-000050**: MaximumPasswordAge must be 1 to 180; 0 and -1 (never expires) are findings.
 - **SO-000320**: LDAPClientIntegrity 1 is not a finding, missing or 0 is. 2 (require signing) is stricter than the check text's value and is Not_Reviewed.
-- **SO-000360** is Not_Applicable when the SharePoint Timer service (SPTimerV4) is running. **MS-000140** is Not_Applicable when MSExchangeServiceHost is present (an Exchange server), as well as on domain controllers and standalone systems.
+- **SO-000360** is Not_Applicable when SharePoint is installed (the SharePoint Timer service SPTimerV4 is present, running or not). **MS-000140** is Not_Applicable when MSExchangeServiceHost is present (an Exchange server), as well as on domain controllers and standalone systems.
 - **SO-000380 to 000450 and AU-000060** are Not_Applicable on Server Core (`InstallationType` "Server Core").
 - **00-000020**: Not_Applicable when the built-in Administrator (RID 500) is disabled on a non-DC; Open when its password is older than 180 days; NotAFinding only on standalone systems (on domain members the LAPS portion needs review; the LAPS policy values are shown).
 - **00-000100**: Not a finding on Windows Server 2022 (build 20348) collected on or before 10/15/2031, the Extended Support end the check text gives; any other OS is Not_Reviewed.
@@ -252,13 +252,14 @@ The two skips are Linux-only (the full collector run and the permission-denied p
 ### CAT I
 
 - **Decided from host facts (22):** 00-000130, 00-000250, AC-000090, CC-000210/220/230/430/470/500, DC-000070, DC-000080, MS-000140, SO-000020/210/220/230/250/300/310 and UR-000020/060/100.
-- **Evidence or applicability only (8):**
-  - DC-000010 and MS-000010: who is "responsible for administration" is a judgement; members are listed.
+- **Partial (1):** MS-000010. On a domain-joined member server, Domain Admins (any `S-1-5-21-*-512` member of the local Administrators group) is Open, because the check text requires it to be replaced by a member server administrator group. Otherwise the result is Not_Reviewed with the members listed: whether the replacement group and the other members are "responsible for administration" cannot be proven on the host. Not_Applicable on domain controllers.
+- **Evidence or applicability only (7):**
+  - DC-000010: who is "responsible for administration" is a judgement; members are listed.
   - DC-000090, 000100 and 000110: Active Directory object permissions, not host facts.
   - DC-000150: needs an anonymous LDAP bind, an active test.
   - DC-000290 and DC-000300: DoD PKI / ECA issuer and UPN mapping judgements.
   
-  On member and standalone servers the six DC rules among them are Not_Applicable from the domain role.
+  All seven are domain-controller rules and are Not_Applicable on member and standalone servers, from the domain role.
 - **Not host-checkable (1): WN22-00-000030.** It requires an organisational policy that keeps administrative accounts away from internet-facing applications, with technical enforcement "except as approved by the AO". AppLocker rules could be collected as evidence but cannot show the policy or the approvals.
 
 ### Fixtures and tests
@@ -272,7 +273,21 @@ The two skips are Linux-only (the full collector run and the permission-denied p
 - A new `windows-collector` job runs on `windows-2022` (elevated by default):
   - the collector tests under Windows PowerShell 5.1;
   - the collector under `pwsh` and under `powershell`, in separate steps, each native exit code checked;
-  - `collect-parse windows --min-ok 15` and `scan` for each output;
+  - `collect-parse windows --min-ok 20 --require security_policy,user_rights,audit_policy,registry,features,domain_role,local_accounts,acls` and `scan` for each output, plus an assertion that `audit_policy` came from `auditpol /backup` (the locale-independent path);
   - both outputs uploaded as the `windows-collector-output` artifact.
 - The job also writes a summary of each output (facts read, unavailable facts with reasons, scan counts) as a workflow annotation, readable from the public check-run annotations.
 - The `frontend` job is gated per step with `if: hashFiles('package.json') != ''` (`hashFiles()` is not available in a job-level `if`), so it passes as a no-op until Task 9 adds the dashboard.
+
+### Review fix round 1 (Task 4)
+
+- **I1, WN22-MS-000010 (CAT I) is now partial.** `local_admins` keeps each member's SID and derives `domain_admins_member`, which is set only when every member has a SID. On a member server, a Domain Admins member is Open. Anything else is Not_Reviewed with the members and SIDs listed. The rule is Not_Applicable on domain controllers. Standalone systems stay Not_Reviewed: the check text applies to them, and there are no Domain Admins to replace.
+- **I2, CI gate.** `collect-parse` has a new `--require FACT,...` option; it exits 1 when any listed fact was not read. The Windows job now requires the eight facts most of the checks rest on, keeps `--min-ok 20`, and asserts that the audit policy came from `auditpol /backup`.
+- **M1.** The collector-run test points `TEMP` and `TMP` at a fresh folder for the subprocess and asserts the folder is empty afterwards. That is where secedit and auditpol write their exports.
+- **M2, WN22-00-000250.** NotAFinding needs every protected fixed volume fully encrypted (`VolumeStatus` FullyEncrypted, or `EncryptionPercentage` 100). Protection on with encryption in progress is Not_Reviewed; protection off is still Open.
+- **M3, WN22-SO-000360.** The SharePoint exception rests on product presence (SPTimerV4 present), not on the timer service running.
+- **M4, WN22-AU-000060.** The `acl` operator takes `finding: modify`. A principal other than TrustedInstaller with Full control or Modify (all Modify bits, or GENERIC_ALL) is Open. Any other grant beyond read & execute, for example write only, is not what the check text names and is Not_Reviewed.
+- **M5.** The collector reads each NTDS folder inside its own try/catch. A folder that cannot be listed becomes an error entry in `ntds_files`, so WN22-DC-000070 is Not_Reviewed, while the event log, Eventvwr and SYSVOL permissions survive.
+- **M6, WN22-UR-000090.** Virtual Machines (S-1-5-83-0) is allowed only when the Hyper-V role is installed: the collector now queries the `Hyper-V` feature (`Microsoft-Hyper-V` in the optional-feature fallback). With the feature list unreadable, a grant to Virtual Machines is Not_Reviewed. The SID is S-1-5-83-0, as the check text gives it; the review note said S-1-5-82-0, which is the IIS application pool authority. The collector's help block now lists the `Win32_Tpm` query.
+- **M7** stays as documented: the DC Kerberos rules read the effective policy.
+- **Coverage after the fixes:** 254 of 277 rules automated (229 can decide a result, 25 evidence or applicability only), 23 manual. CAT I: 22 full, 1 partial (MS-000010), 7 evidence, 1 manual (00-000030).
+- **RED:** with `backend/stigwatch` and `collectors` stashed and the new tests and fixtures kept, `tests/test_windows_checks.py` gave 8 failed, 34 passed. The M1 test only runs on Windows with `STIGWATCH_RUN_COLLECTOR=1`.

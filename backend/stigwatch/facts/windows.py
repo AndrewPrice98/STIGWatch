@@ -139,6 +139,7 @@ def summary(data: dict) -> dict:
         "collected_at": data["collected_at"],
         "facts": len(raw),
         "ok": len(ok),
+        "read": ok,
         "unavailable": unavailable,
         "unknown": sorted(f for f in raw if f not in FACTS),
         "missing": sorted(f for f in FACTS if f not in raw and f not in DERIVED),
@@ -433,6 +434,7 @@ def p_registry(v: Any) -> Partial:
 
 # Get-WindowsOptionalFeature names for the Server feature names the checks use.
 OPTIONAL_FEATURES = {
+    "Microsoft-Hyper-V": "Hyper-V",
     "TelnetClient": "Telnet-Client", "TFTP": "TFTP-Client", "SimpleTCP": "Simple-TCPIP",
     "SMB1Protocol": "FS-SMB1", "MicrosoftWindowsPowerShellV2Root": "PowerShell-v2",
     "IIS-FTPSvc": "Web-Ftp-Service",
@@ -498,9 +500,18 @@ def p_local_accounts(v: Any) -> dict:
 def p_local_admins(v: Any) -> dict:
     v = _obj(v, "local_admins")
     members = [_obj(m, "member") for m in _list(v.get("members"), "members")]
-    return {"count": len(members),
-            "members": [f"{m.get('name')} ({m.get('object_class')}, {m.get('principal_source')})"
-                        for m in members]}
+    sids = [m.get("sid") for m in members]
+    out: dict[str, Any] = {
+        "count": len(members),
+        "members": [f"{m.get('name')} ({m.get('object_class')}, {m.get('principal_source')})"
+                    for m in members],
+    }
+    # Every member's SID is needed to say whether Domain Admins is a member; a local SAM
+    # never has RID 512, so any S-1-5-21-*-512 member is a domain's Domain Admins group.
+    if all(isinstance(sid, str) and is_sid(sid) for sid in sids):
+        out["sids"] = sids
+        out["domain_admins_member"] = any(sid_matches(sid, ["S-1-5-21-*-512"]) for sid in sids)
+    return out
 
 
 NTFS_LIKE = {"NTFS", "REFS", "CSVFS"}
@@ -549,9 +560,17 @@ def p_bitlocker(v: Any) -> dict:
             continue  # removable drives are not in scope
         mp = str(vol.get("mount_point") or "?")
         status = str(vol.get("protection_status") or "")
-        vols.append(f"{mp} protection {status or 'unknown'}")
+        vstatus = str(vol.get("volume_status") or "")
+        pct = _int(vol.get("encryption_percentage"))
+        vols.append(f"{mp} protection {status or 'unknown'}, {vstatus or 'status unknown'}"
+                    + (f" {pct}%" if pct is not None else ""))
         if status in ("On", "1"):
-            on.append(mp)
+            # Protection on is not enough: the data must be fully encrypted (an
+            # encryption still in progress leaves part of the volume in clear).
+            if vstatus == "FullyEncrypted" or pct == 100:
+                on.append(mp)
+            else:
+                unknown.append(mp)
         elif status in ("Off", "0"):
             off.append(mp)
         else:
@@ -719,11 +738,20 @@ def _has_sid_describe(arg: str) -> str:
 # FILE_GENERIC_READ | FILE_GENERIC_EXECUTE (Read & execute, with Synchronize) and the generic
 # read and execute bits that appear on inherit-only entries.
 READ_EXECUTE = 0x001200A9 | 0x80000000 | 0x20000000
+MODIFY = 0x001301BF  # FileSystemRights.Modify (read, write, execute and delete)
+GENERIC_ALL = 0x10000000
+
+
+def full_or_modify(rights: int) -> bool:
+    return rights & MODIFY == MODIFY or bool(rights & GENERIC_ALL)
 
 
 def _acl_validate(arg: Any) -> None:
-    if not isinstance(arg, dict) or set(arg) - {"full", "read", "standard"} or "full" not in arg:
-        raise ValueError("acl takes {full: [SIDs], read?: any | [SIDs], standard?: [SIDs]}")
+    if not isinstance(arg, dict) or set(arg) - {"full", "read", "standard", "finding"} or "full" not in arg:
+        raise ValueError("acl takes {full: [SIDs], read?: any | [SIDs], standard?: [SIDs], "
+                         "finding?: modify}")
+    if arg.get("finding", "modify") != "modify":
+        raise ValueError("acl finding must be 'modify'")
     for k in ("full", "standard"):
         if k in arg and not (isinstance(arg[k], list) and all(isinstance(s, str) for s in arg[k])):
             raise ValueError(f"acl {k} must be a list of SID patterns")
@@ -746,7 +774,10 @@ def _acl_violations(entry: dict, arg: dict) -> tuple[list[str], list[str]]:
         may_read = read == "any" or sid_matches(sid, read)
         if may_read and rights & ~READ_EXECUTE == 0:
             continue
-        if may_read and "standard" in arg and not sid_matches(sid, arg["standard"]):
+        if arg.get("finding") == "modify":
+            # only Full control or Modify is a finding; any other write grant needs review
+            (bad if full_or_modify(rights) else unknown).append(desc)
+        elif may_read and "standard" in arg and not sid_matches(sid, arg["standard"]):
             unknown.append(desc)
         else:
             bad.append(desc)

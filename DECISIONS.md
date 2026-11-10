@@ -38,7 +38,7 @@ What was checked:
 - The packages download without authentication from `dl.dod.cyber.mil`.
 - DoD Cyber Exchange FAQ and terms pages (https://www.cyber.mil/stigs/faqs, https://www.cyber.mil/terms-of-use, https://www.cyber.mil/?p=456) were fetched but are JavaScript-rendered shells ("Welcome to LWC Communities!"); no text could be read. A web search found no DISA statement on redistribution.
 
-Decision for Task 2 (conservative default, controller may override): treat redistribution as unconfirmed. The committed catalog contains only identifiers, severity, STIG ID, titles and CCIs; check text, fix text and discussion are loaded from the user's own copy via `python -m stigwatch benchmarks import FILE.zip`. If the controller obtains a written statement from the DoD Cyber Exchange or accepts that these are unrestricted US Government works, full text can be committed later. (That 17 U.S.C. 105 denies copyright in US Government works is general legal knowledge, not a source fetched here; it does not by itself settle distribution markings.)
+Decision: see "Benchmark content" below (controller ruling supersedes the earlier conservative default).
 
 ### 3. STIG Viewer 2 `.ckl` structure (XML)
 
@@ -76,3 +76,11 @@ Source: the published sample https://raw.githubusercontent.com/NUWCDIVNPT/stig-m
 - The local venv uses Python 3.14; code targets `>=3.12` and CI uses 3.12.
 - The CI backend job runs on `ubuntu-22.04` per the plan. The Windows runner job arrives with Task 4. The frontend job is inherited from the CMMC Ready skeleton and passes once Task 9 adds `package.json`; the `benchmarks --check` step passes once Task 2 implements it.
 - Dependabot lists the root pip and npm ecosystems ahead of the Vercel function and frontend (Tasks 9 and 11).
+
+## Benchmark content (Task 2)
+
+- **Redistribution.** No distribution statement was found (section 2), so the controller ruled to commit the full rule text: title, discussion (VulnDiscussion), check text, fix text, CCIs, severity and all IDs. Reasoning: DISA STIGs are works of the U.S. Government (17 U.S.C. 105 gives no copyright in them) and are published for unrestricted public download from the DoD Cyber Exchange. Each catalog file carries the DISA title, version, release, benchmark date, the download URL and the SHA-256 of the source zip. Content is reproduced unmodified apart from whitespace normalisation (CRLF to LF, trailing spaces removed, outer whitespace trimmed) and attributed to DISA. This is a project decision, not legal advice; if DISA states otherwise, set `metadata_only` and rebuild (the catalog supports metadata-only files).
+- **Catalog files.** `backend/data/benchmarks/ubuntu-22.04.json` (Canonical Ubuntu 22.04 LTS STIG V2R10, 191 rules) and `windows-server-2022.json` (Microsoft Windows Server 2022 STIG V2R11, 277 rules). Benchmark ids `ubuntu-22.04` and `windows-server-2022` are the stable keys used by the rest of the app. Rules keep XCCDF order. Recorded counts per severity match the rules.
+- **Parsing.** XCCDF is untrusted: defusedxml with DTDs refused, read from the zip in memory with size limits, nothing extracted. The embedded escaped description markup is unescaped and parsed the same way to extract `VulnDiscussion`.
+- **Verification.** `python -m stigwatch benchmarks --check` validates the committed JSON (required fields, unique Group/Rule/STIG IDs, recorded counts equal to the rules, check and fix text present unless `metadata_only`). CI runs this because it cannot download the zips. Maintainers run `python scripts/build_benchmarks.py --check ZIP...` locally to rebuild from the official zips and compare byte for byte with the committed JSON.
+- **Newer releases.** `python -m stigwatch benchmarks import FILE.zip [--out DIR] [--source-url URL]` parses a DISA STIG zip and writes `<benchmark_id>.json` into `$STIGWATCH_DATA_DIR/benchmarks` (default `~/.stigwatch/benchmarks`). A locally imported file with the same id overrides the bundled one; unrelated products are imported under an id derived from the XCCDF Benchmark id.

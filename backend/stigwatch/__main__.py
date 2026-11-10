@@ -125,6 +125,61 @@ def _cmd_coverage(args: argparse.Namespace) -> int:
     return 0
 
 
+def _read_password(args: argparse.Namespace) -> str:
+    if args.password_stdin:
+        password = sys.stdin.readline().rstrip("\r\n")
+    else:
+        import getpass
+
+        password = getpass.getpass("Admin password: ")
+        if password != getpass.getpass("Repeat password: "):
+            sys.exit("Passwords do not match.")
+    if len(password) < 12:
+        sys.exit("Use at least 12 characters.")
+    return password
+
+
+def _update_env_file(path: Path, values: dict[str, str]) -> None:
+    """Set keys in a .env file, keeping any other lines as they are."""
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    remaining = dict(values)
+    out = []
+    for line in lines:
+        key = line.split("=", 1)[0].strip()
+        if key in remaining:
+            out.append(f"{key}={remaining.pop(key)}")
+        else:
+            out.append(line)
+    out += [f"{k}={v}" for k, v in remaining.items()]
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+def _cmd_create_admin(args: argparse.Namespace) -> int:
+    import secrets
+
+    from . import config
+    from .auth import hash_password
+
+    password = _read_password(args)
+    values = {
+        "STIGWATCH_ADMIN_USER": args.username,
+        "STIGWATCH_ADMIN_PASSWORD_HASH": hash_password(password),
+        # Reuse an existing secret so current sessions stay valid, unless asked to rotate.
+        "STIGWATCH_SECRET_KEY": (config.secret_key() if config.secret_key() and not args.rotate_secret
+                                 else secrets.token_urlsafe(48)),
+    }
+    if args.print:
+        print("Set these environment variables on your host. Keep them secret.\n")
+        for key, value in values.items():
+            print(f"{key}={value}")
+        print("STIGWATCH_TRUST_PROXY=true")
+        return 0
+    _update_env_file(config.ENV_FILE, {**values, "STIGWATCH_COOKIE_SECURE": "false"})
+    print(f"Admin '{args.username}' saved to {config.ENV_FILE} (git-ignored).")
+    print("Restart the API to pick it up. For a hosted deployment, run again with --print.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="stigwatch")
     sub = parser.add_subparsers(dest="command")
@@ -153,6 +208,14 @@ def build_parser() -> argparse.ArgumentParser:
     cv = sub.add_parser("coverage", help="automated and manual rule counts by CAT")
     cv.add_argument("benchmark", help="benchmark id, e.g. ubuntu-22.04")
     cv.set_defaults(func=_cmd_coverage)
+
+    admin = sub.add_parser("create-admin", help="set the dashboard login (writes backend/.env)")
+    admin.add_argument("--username", default="admin")
+    admin.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
+    admin.add_argument("--print", action="store_true",
+                       help="print the variables for a hosting provider instead of writing .env")
+    admin.add_argument("--rotate-secret", action="store_true", help="new signing secret (logs everyone out)")
+    admin.set_defaults(func=_cmd_create_admin)
     return parser
 
 

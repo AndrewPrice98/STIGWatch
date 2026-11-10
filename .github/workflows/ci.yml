@@ -28,6 +28,9 @@ jobs:
       - name: Benchmark catalog is current
         working-directory: backend
         run: python -m stigwatch benchmarks --check
+      - name: Demo fleet fixture is current
+        working-directory: backend
+        run: python scripts/build_demo.py --check
 
   # Runs the real Ubuntu collector under dash and mawk, as a normal user and as root,
   # and keeps both outputs as artifacts. Task 11 extends this job.

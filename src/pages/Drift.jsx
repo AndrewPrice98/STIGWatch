@@ -24,7 +24,7 @@ async function loadDrift() {
 async function loadWeek(week) {
   const drifts = await mapLimit(week.scans, 6, async (scan) => ({ scan, drift: await api.scanDrift(scan.id) }))
   const merged = mergeDrift(drifts)
-  const scanIds = new Set(DRIFT_KINDS.flatMap((k) => merged[k.key].map((r) => r.scan_id)))
+  const scanIds = new Set(DRIFT_KINDS.flatMap((k) => merged[k.id].map((r) => r.scan_id)))
   const titles = new Map()
   await mapLimit([...scanIds], 6, async (scanId) => {
     try {
@@ -141,7 +141,7 @@ function WeekDetail({ week }) {
 
 function DriftGroups({ data, week }) {
   const { merged, titles } = data
-  const total = DRIFT_KINDS.reduce((n, k) => n + merged[k.key].length, 0)
+  const total = DRIFT_KINDS.reduce((n, k) => n + merged[k.id].length, 0)
   if (!week.scans.length) return <Empty>No host was scanned this week.</Empty>
   return (
     <>
@@ -153,12 +153,12 @@ function DriftGroups({ data, week }) {
       )}
       {total > 0 && (
         <div className="drift-grid">
-          {DRIFT_KINDS.filter((k) => merged[k.key].length).map((k) => (
-            <div key={k.key} className={`drift-group ${k.tone}`}>
-              <h3><Icon name={k.icon} size={16} /> {k.label} <span className="drift-n">{merged[k.key].length}</span></h3>
+          {DRIFT_KINDS.filter((k) => merged[k.id].length).map((k) => (
+            <div key={k.id} className={`drift-group ${k.tone}`}>
+              <h3><Icon name={k.icon} size={16} /> {k.label} <span className="drift-n">{merged[k.id].length}</span></h3>
               <p className="muted small">{k.help}</p>
               <ul className="drift-list">
-                {merged[k.key].map((r) => {
+                {merged[k.id].map((r) => {
                   const title = titles.get(`${r.scan_id}:${r.stig_id}`)
                   return (
                     <li key={`${r.scan_id}-${r.stig_id}`}>
@@ -178,8 +178,8 @@ function DriftGroups({ data, week }) {
         </div>
       )}
       <ul className="drift-zero">
-        {DRIFT_KINDS.filter((k) => !merged[k.key].length).map((k) => (
-          <li key={k.key} title={k.help}><Icon name={k.icon} size={14} /> {k.label}: <strong>0</strong></li>
+        {DRIFT_KINDS.filter((k) => !merged[k.id].length).map((k) => (
+          <li key={k.id} title={k.help}><Icon name={k.icon} size={14} /> {k.label}: <strong>0</strong></li>
         ))}
       </ul>
       <p className="muted small drift-foot">

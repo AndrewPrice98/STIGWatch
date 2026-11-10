@@ -420,15 +420,15 @@ export function defaultWeek(weeks) {
 
 /** Section order and wording of drift categories, shared by the fleet Drift page. */
 export const DRIFT_KINDS = [
-  { key: 'regressed', label: 'Regressed', tone: 'bad', icon: 'up',
+  { id: 'regressed', label: 'Regressed', tone: 'bad', icon: 'up',
     help: 'Was Not a finding or Not applicable; Open now.' },
-  { key: 'newly_visible_cat1', label: 'Newly visible CAT I', tone: 'bad', icon: 'eye',
+  { id: 'newly_visible_cat1', label: 'Newly visible CAT I', tone: 'bad', icon: 'eye',
     help: 'Not reviewed before, Open now. The finding may be old; it was not visible before.' },
-  { key: 'newly_open', label: 'Newly open (other CATs)', tone: 'warn', icon: 'eye',
+  { id: 'newly_open', label: 'Newly open (other CATs)', tone: 'warn', icon: 'eye',
     help: 'Not reviewed before, Open now.' },
-  { key: 'lost_visibility', label: 'Lost visibility', tone: 'warn', icon: 'eyeOff',
+  { id: 'lost_visibility', label: 'Lost visibility', tone: 'warn', icon: 'eyeOff',
     help: 'Open before, Not reviewed now. Not known to be fixed: the collector could not check it this time.' },
-  { key: 'fixed', label: 'Fixed', tone: 'good', icon: 'down',
+  { id: 'fixed', label: 'Fixed', tone: 'good', icon: 'down',
     help: 'Was Open; Not a finding or Not applicable now.' },
 ]
 
@@ -440,19 +440,19 @@ export const DRIFT_KINDS = [
  */
 export function mergeDrift(drifts) {
   const out = { first: [], compared: 0 }
-  for (const k of DRIFT_KINDS) out[k.key] = []
+  for (const k of DRIFT_KINDS) out[k.id] = []
   for (const { scan, drift } of drifts) {
     if (!drift || drift.first_scan) { out.first.push(scan); continue }
     out.compared += 1
     for (const k of DRIFT_KINDS) {
-      let items = drift[k.key] || []
-      if (k.key === 'newly_open') items = items.filter((r) => r.cat !== 'CAT I')
-      for (const r of items) out[k.key].push({ ...r, host_id: scan.host_id, host_name: scan.host_name, scan_id: scan.id })
+      let items = drift[k.id] || []
+      if (k.id === 'newly_open') items = items.filter((r) => r.cat !== 'CAT I')
+      for (const r of items) out[k.id].push({ ...r, host_id: scan.host_id, host_name: scan.host_name, scan_id: scan.id })
     }
   }
   const catIndex = (c) => { const i = CATS.indexOf(c); return i === -1 ? 9 : i }
   for (const k of DRIFT_KINDS) {
-    out[k.key].sort((a, b) => catIndex(a.cat) - catIndex(b.cat) || a.host_name.localeCompare(b.host_name) || a.stig_id.localeCompare(b.stig_id))
+    out[k.id].sort((a, b) => catIndex(a.cat) - catIndex(b.cat) || a.host_name.localeCompare(b.host_name) || a.stig_id.localeCompare(b.stig_id))
   }
   return out
 }

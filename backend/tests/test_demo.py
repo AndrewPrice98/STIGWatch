@@ -307,3 +307,20 @@ def test_defect_that_does_not_fit_fails_loudly():
 
 def test_fixture_json_is_valid_utf8():
     json.loads(config.DEMO_FIXTURE.read_bytes().decode("utf-8"))
+
+
+def test_fleet_trend_reports_lost_visibility_separately(seeded):
+    trend = db.fleet_trend(seeded)
+    assert all(set(p["lost_visibility"]) == {"CAT I", "CAT II", "CAT III"} for p in trend)
+    assert sum(trend[0]["lost_visibility"].values()) == 0
+    # web-01 week 8: UBTU-22-653020 (CAT III) went from Open to Not_Reviewed, which is not a fix.
+    assert trend[7]["lost_visibility"]["CAT III"] >= 1
+
+
+def test_alerts_carry_the_scan_date_and_previous_status(seeded):
+    alerts = db.list_alerts(seeded)
+    assert alerts
+    for a in alerts:
+        scan = db.get_scan(seeded, a["scan_id"])
+        assert a["collected_at"] == scan["collected_at"]
+        assert a["from_status"] in ("NotAFinding", "Not_Applicable")

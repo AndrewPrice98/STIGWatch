@@ -20,6 +20,7 @@ from . import config
 from . import drift as drift_mod
 from .benchmarks import Benchmark, load_benchmark
 from .checks import engine
+from .constants import CATS
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS hosts (
@@ -82,7 +83,6 @@ CREATE INDEX IF NOT EXISTS idx_alerts_host ON alerts(host_id, created_at);
 """
 
 BUSY_TIMEOUT_SECONDS = 15.0
-CATS = ("CAT I", "CAT II", "CAT III")
 
 
 def now_utc() -> str:
@@ -379,7 +379,11 @@ def rebuild_next_alerts(conn: sqlite3.Connection, scan_id: int, *, commit: bool 
 
 
 def list_alerts(conn: sqlite3.Connection, host_id: int | None = None) -> list[dict]:
-    sql = "SELECT a.*, h.name AS host_name FROM alerts a JOIN hosts h ON h.id = a.host_id"
+    # collected_at is the date of the scan the alert was raised for; from_status is what the rule
+    # was in the previous scan (the status it regressed from).
+    sql = ("SELECT a.*, h.name AS host_name, s.collected_at AS collected_at, pr.status AS from_status "
+           "FROM alerts a JOIN hosts h ON h.id = a.host_id JOIN scans s ON s.id = a.scan_id "
+           "LEFT JOIN results pr ON pr.scan_id = a.prev_scan_id AND pr.stig_id = a.stig_id")
     args: tuple = ()
     if host_id is not None:
         sql += " WHERE a.host_id = ?"
@@ -443,10 +447,13 @@ def fleet_trend(conn: sqlite3.Connection) -> list[dict]:
 
     In each week every host contributes its latest scan collected up to the end of that
     week, so a host that skipped a week keeps its last known state and a host counts only
-    from its first scan on. ``hosts`` is how many hosts contributed."""
+    from its first scan on. ``hosts`` is how many hosts contributed. ``lost_visibility`` counts,
+    per CAT, the findings that were Open for a host in the previous week's scan and are
+    Not_Reviewed in this week's: they left the Open count without being fixed."""
     opens = _open_by_scan(conn)
     scans = conn.execute("SELECT id, host_id, collected_at FROM scans ORDER BY collected_at, id").fetchall()
     series = []
+    before: dict[int, int] = {}
     for week in sorted({_week_start(s["collected_at"]) for s in scans}):
         end = (week + timedelta(days=7)).isoformat()
         latest = {s["host_id"]: s["id"] for s in scans if s["collected_at"][:10] < end}
@@ -454,5 +461,16 @@ def fleet_trend(conn: sqlite3.Connection) -> list[dict]:
         for scan_id in latest.values():
             for c, n in opens.get(scan_id, {}).items():
                 total[c] += n
-        series.append({"week": week.isoformat(), "hosts": len(latest), "open": total})
+        lost = {c: 0 for c in CATS}
+        for host_id, scan_id in latest.items():
+            if host_id in before and before[host_id] != scan_id:
+                for r in conn.execute(
+                        "SELECT n.cat AS cat, COUNT(*) AS n FROM results n JOIN results p "
+                        "ON p.scan_id = ? AND p.stig_id = n.stig_id "
+                        "WHERE n.scan_id = ? AND p.status = 'Open' AND n.status = 'Not_Reviewed' "
+                        "GROUP BY n.cat", (before[host_id], scan_id)):
+                    lost[r["cat"]] += r["n"]
+        before = latest
+        series.append({"week": week.isoformat(), "hosts": len(latest), "open": total,
+                       "lost_visibility": lost})
     return series

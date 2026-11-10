@@ -51,17 +51,27 @@ export function weekDelta(trend, cat) {
   if (!Array.isArray(trend) || trend.length < 2) return null
   const last = trend[trend.length - 1].open?.[cat] ?? 0
   const prev = trend[trend.length - 2].open?.[cat] ?? 0
-  return { current: last, previous: prev, change: last - prev, since: trend[trend.length - 2].week }
+  const lost = trend[trend.length - 1].lost_visibility?.[cat] ?? 0
+  return { current: last, previous: prev, change: last - prev, since: trend[trend.length - 2].week, lost }
 }
 
 /**
- * Words and direction for a change in open findings: fewer open findings is better.
+ * Words and direction for a change in open findings: fewer open findings is better, unless some
+ * of them only left the count because the host stopped being readable (`lostVisibility`, findings
+ * that went from Open to Not_Reviewed). Those are not fixed, so such a decrease is neutral and
+ * says how many were lost.
  * { arrow, text, tone, sr } where sr is the screen-reader sentence.
  */
-export function describeDelta(change) {
+export function describeDelta(change, lostVisibility = 0) {
   if (change == null) return null
   if (change === 0) return { arrow: '→', text: 'no change', tone: 'neutral', sr: 'no change from the previous week' }
   const n = Math.abs(change)
+  if (change < 0 && lostVisibility > 0) {
+    return {
+      arrow: '↓', text: `${n} fewer · ${lostVisibility} lost visibility`, tone: 'neutral',
+      sr: `down ${n} from the previous week, of which ${lostVisibility} lost visibility and are not confirmed fixed`,
+    }
+  }
   if (change < 0) return { arrow: '↓', text: `${n} fewer`, tone: 'good', sr: `down ${n} from the previous week` }
   return { arrow: '↑', text: `${n} more`, tone: 'bad', sr: `up ${n} from the previous week` }
 }
@@ -457,10 +467,9 @@ export function mergeDrift(drifts) {
   return out
 }
 
-/** Previous status of a CAT I regression alert ("went from NotAFinding to Open"), or ''. */
+/** Previous status of a CAT I regression alert (the API's `from_status`), or ''. */
 export function alertFrom(alert) {
-  const m = /went from (NotAFinding|Not_Applicable|Open|Not_Reviewed) to Open/.exec(alert?.message || '')
-  return m ? m[1] : ''
+  return STATUSES.includes(alert?.from_status) ? alert.from_status : ''
 }
 
 // -- remediation, reports, benchmarks ------------------------------------------------------------

@@ -37,7 +37,7 @@ async function loadWeek(week) {
 
 function AlertList({ alerts: unsorted, weekByScan }) {
   const [all, setAll] = useState(false)
-  // The API orders by when the alert was created; "newest first" means newest scan, so sort here.
+  // The API returns each alert with the collected_at of its scan; list the newest scan first.
   const alerts = useMemo(() => {
     const when = (a) => String(a.collected_at || a.created_at || '')
     return [...unsorted].sort((x, y) => when(y).localeCompare(when(x)) || y.id - x.id)

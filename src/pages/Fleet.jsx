@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { api } from '../api.js'
 import { NoData } from '../components/admin.jsx'
-import { mapLimit } from '../data.js'
 import {
   CATS, DISCLAIMER, describeDelta, formatDate, hostsAtRisk, listWords, plural, regressionStory, weekDelta,
 } from '../lib.js'
@@ -13,12 +12,8 @@ import {
 
 async function loadFleet() {
   const [fleet, alerts, hosts] = await Promise.all([api.fleet(), api.alerts(), api.hosts()])
-  // An alert is dated by the scan it was raised for: join each alert to that scan's collected_at.
-  const alertHosts = [...new Set(alerts.map((a) => a.host_id))]
-  const scanLists = await mapLimit(alertHosts, 6, (id) => api.hostScans(id).catch(() => []))
-  const collectedAt = new Map(scanLists.flat().map((s) => [s.id, s.collected_at]))
-  const dated = alerts.map((a) => ({ ...a, collected_at: collectedAt.get(a.scan_id) }))
-  const story = regressionStory(dated, fleet.trend)
+  // Each alert carries the collected_at of the scan it was raised for.
+  const story = regressionStory(alerts, fleet.trend)
   if (story) {
     // Title and current status of each regressed rule (a handful of requests at most).
     const details = await Promise.all(story.rules.slice(0, 8).map((a) => api.rule(a.host_id, a.stig_id).catch(() => null)))
@@ -83,7 +78,7 @@ function StartHere({ story }) {
 
 function CatTile({ cat, value, trend, hosts }) {
   const d = weekDelta(trend, cat) // the trend supplies the week-over-week change and the sparkline
-  const delta = describeDelta(d?.change)
+  const delta = describeDelta(d?.change, d?.lost)
   const onHosts = hosts.filter((h) => (h.open?.[cat] || 0) > 0).length
   return (
     <section className={`card tile ${cat === 'CAT I' ? 'cat1' : cat === 'CAT II' ? 'cat2' : 'cat3'}`} aria-label={`Open ${cat} findings`}>

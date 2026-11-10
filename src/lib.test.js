@@ -33,7 +33,7 @@ test('week delta compares the last two trend points per CAT', () => {
     { week: '2026-10-26', open: { 'CAT I': 7, 'CAT II': 62, 'CAT III': 16 } },
     { week: '2026-11-02', open: { 'CAT I': 7, 'CAT II': 44, 'CAT III': 10 } },
   ]
-  assert.deepEqual(weekDelta(trend, 'CAT I'), { current: 7, previous: 7, change: 0, since: '2026-10-26' })
+  assert.deepEqual(weekDelta(trend, 'CAT I'), { current: 7, previous: 7, change: 0, since: '2026-10-26', lost: 0 })
   assert.equal(weekDelta(trend, 'CAT II').change, -18)
   assert.equal(weekDelta(trend.slice(0, 2), 'CAT I').change, 4)
   assert.equal(weekDelta(trend.slice(0, 1), 'CAT I'), null)
@@ -46,6 +46,21 @@ test('fewer open findings reads as good, more as bad, with words not just colour
   assert.equal(describeDelta(4).text, '4 more')
   assert.equal(describeDelta(0).text, 'no change')
   assert.equal(describeDelta(null), null)
+})
+
+test('findings that only lost visibility are not reported as fewer', () => {
+  const trend = [
+    { week: '2026-10-26', open: { 'CAT III': 3 }, lost_visibility: { 'CAT III': 0 } },
+    { week: '2026-11-02', open: { 'CAT III': 2 }, lost_visibility: { 'CAT III': 1 } },
+  ]
+  const d = weekDelta(trend, 'CAT III')
+  assert.equal(d.lost, 1)
+  const shown = describeDelta(d.change, d.lost)
+  assert.equal(shown.tone, 'neutral')
+  assert.match(shown.text, /1 lost visibility/)
+  assert.match(shown.sr, /not confirmed fixed/)
+  assert.equal(describeDelta(-1, 0).tone, 'good', 'a real decrease is still good')
+  assert.equal(describeDelta(2, 1).tone, 'bad', 'an increase is bad either way')
 })
 
 test('hosts sort by open CAT I, then CAT II, CAT III, compliance and name', () => {
@@ -264,8 +279,8 @@ test('merged drift keeps lost visibility apart from fixed and leaves CAT I out o
   assert.deepEqual(merged.lost_visibility.map((r) => r.stig_id), ['U-4'])
   assert.ok(!merged.fixed.some((r) => r.stig_id === 'U-4'), 'lost visibility is never listed as fixed')
   assert.equal(merged.regressed[0].host_name, 'web-01')
-  assert.equal(alertFrom({ message: 'x: U-1 (CAT I) went from NotAFinding to Open.' }), 'NotAFinding')
-  assert.equal(alertFrom({ message: 'something else' }), '')
+  assert.equal(alertFrom({ from_status: 'NotAFinding' }), 'NotAFinding')
+  assert.equal(alertFrom({ message: 'went from NotAFinding to Open' }), '', 'the message is not parsed')
 })
 
 test('async state never shows the data of a previous loader', () => {

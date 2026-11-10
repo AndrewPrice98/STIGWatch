@@ -104,8 +104,11 @@ def _item_ids(open_results: Any, benchmark: Benchmark) -> list[tuple[str, Any]]:
 
 def _host_name(host: Any) -> str:
     # "<#" and "#>" would open or close a PowerShell block comment, so they never survive.
+    # Host names are untrusted. They only ever appear in comments, and the characters that
+    # open a Jinja expression, a YAML/PowerShell comment form or a block comment are removed.
     name = _one_line(_get(host, "name", host if isinstance(host, str) else ""), 80)
-    return name.replace("<#", "< #").replace("#>", "# >") or "(unnamed)"
+    name = re.sub(r"[{}%#<>$`]", "_", name)
+    return name or "(unnamed)"
 
 
 def _block_safe(text: str) -> str:
@@ -269,6 +272,18 @@ def _ops(benchmark: Benchmark) -> dict:
     return dict(getattr(collector, "OPERATORS", {}) or {})
 
 
+def domain_role_of(raw: Any) -> str | None:
+    """``dc``, ``member``, ``standalone`` or ``workstation`` from a stored Windows collector
+    scan (the Win32_ComputerSystem.DomainRole fact), else None."""
+    try:
+        value = raw["facts"]["domain_role"]["value"]
+        code = value["domain_role"]
+    except (KeyError, TypeError):
+        return None
+    return {0: "workstation", 1: "member-workstation", 2: "standalone", 3: "member",
+            4: "dc", 5: "dc"}.get(code) if isinstance(code, int) else None
+
+
 # =========================================================================== Linux / Ansible
 
 _SSHD_NAMES = {
@@ -293,6 +308,9 @@ _KV_FILES = {
 _SYSCTL_DENY = {"crypto.fips_enabled"}
 _FILE_PATHS = {"var_log": "/var/log", "syslog": "/var/log/syslog", "journalctl": "/usr/bin/journalctl"}
 _AUDIT_TOOLS = ("auditctl", "aureport", "ausearch", "autrace", "auditd", "augenrules")
+_SSHD_DROPIN = "/etc/ssh/sshd_config.d/00-stigwatch.conf"
+_SSHD_FILES = ("{{ ['/etc/ssh/sshd_config'] + (stigwatch_sshd_dropins.files | map(attribute='path') "
+               "| list) }}")
 _PRIO = {"pkg": 0, "apt": 1, "sshd": 1, "sysctl": 1, "kv": 1, "file": 1, "tmout": 1, "usb": 1,
          "limits": 1, "audit": 2, "unit": 3}
 
@@ -359,7 +377,9 @@ def _audit_lines(arg: dict) -> list[str]:
     lines = []
     for arch in arg.get("arches", ["b32", "b64"]):
         for variant in variants:
-            filters = " ".join("-F " + _safe_text(f, r"[A-Za-z0-9_<>=!&-]{1,40}") for f in variant)
+            filters = " ".join(
+                ("-C " + _safe_text(f[2:], r"[A-Za-z0-9_<>=!&-]{1,40}")) if f.startswith("C:")
+                else "-F " + _safe_text(f, r"[A-Za-z0-9_<>=!&-]{1,40}") for f in variant)
             lines.append(f"-a always,exit -F arch={_safe_text(arch, r'b(32|64)')} -S {calls} {filters} {key}")
     return lines
 
@@ -411,6 +431,7 @@ def _linux_tasks(sid: str, rule: Rule, leaves: list[Leaf]) -> list[dict]:
                     args["state"] = "started"
                 elif fld == "active" and op == "ne" and arg == "active":
                     args["state"] = "stopped"
+                    args["masked"] = True   # stopping alone would not survive a reboot
                 elif fld == "load" and op == "eq" and arg == "masked":
                     args["masked"] = True
                 else:
@@ -422,13 +443,18 @@ def _linux_tasks(sid: str, rule: Rule, leaves: list[Leaf]) -> list[dict]:
             if val in ("", None) or isinstance(val, bool):
                 raise Unsupported("no sshd value")
             val = _safe_text(val, r"[A-Za-z0-9_.,@:+/=-]{1,400}")
-            task = _task(label, "ansible.builtin.lineinfile", {
-                "path": "/etc/ssh/sshd_config",
-                "regexp": rf"(?i)^\s*#?\s*{key[1]}\b",
-                "line": f"{key[1]} {val}",
-                "insertbefore": r"(?i)^\s*Match\b",
-                "validate": "/usr/sbin/sshd -t -f %s",
-            }, sid, cat, notify="Reload sshd")
+            # sshd keeps the first value it reads and Ubuntu's stock sshd_config includes
+            # sshd_config.d at the top, so the value goes into a drop-in that sorts first.
+            # The check also counts a second, different value as a finding, so active
+            # copies of the directive in the main file and other drop-ins are commented out.
+            out.append((_PRIO[kind], repr(key) + "0", _task(label, "ansible.builtin.lineinfile", {
+                "path": _SSHD_DROPIN, "regexp": rf"(?i)^\s*{key[1]}\s", "line": f"{key[1]} {val}",
+                "create": True, "owner": "root", "group": "root", "mode": "0644",
+                "validate": "/usr/sbin/sshd -t -f %s"}, sid, cat, notify="Reload sshd")))
+            task = _task(label, "ansible.builtin.replace", {
+                "path": "{{ item }}", "regexp": rf"(?i)^{key[1]}\s.*$",
+                "replace": r"# STIGWatch disabled: \g<0>", "validate": "/usr/sbin/sshd -t -f %s"},
+                sid, cat, loop=_SSHD_FILES, notify="Reload sshd")
         elif kind == "sysctl":
             v = cons.value()
             if isinstance(v, list):
@@ -439,7 +465,7 @@ def _linux_tasks(sid: str, rule: Rule, leaves: list[Leaf]) -> list[dict]:
                 raise Unsupported("sysctl value")
             task = _task(label, "ansible.posix.sysctl", {
                 "name": _safe_text(key[1], r"[a-z0-9_.]{1,80}"), "value": str(v),
-                "sysctl_file": "/etc/sysctl.d/99-stigwatch.conf",
+                "sysctl_file": "/etc/sysctl.d/99-zz-stigwatch.conf",
                 "sysctl_set": True, "state": "present", "reload": True}, sid, cat)
         elif kind == "kv":
             path, style, _ = _KV_FILES[key[1]]
@@ -452,7 +478,7 @@ def _linux_tasks(sid: str, rule: Rule, leaves: list[Leaf]) -> list[dict]:
             regexp = rf"^\s*#?\s*{k}\s*=" if style != "space" else rf"^\s*#?\s*{k}\b"
             task = _task(label, "ansible.builtin.lineinfile", {
                 "path": path, "regexp": regexp, "line": f"{k}{sep}{v}"}, sid, cat,
-                **({"notify": "Restart auditd"} if key[1] == "auditd_conf" else {}))
+                **({"notify": "Reload auditd configuration"} if key[1] == "auditd_conf" else {}))
         elif kind == "limits":
             n = cons.value()
             if not isinstance(n, int) or isinstance(n, bool) or n < 1:
@@ -488,7 +514,7 @@ def _linux_tasks(sid: str, rule: Rule, leaves: list[Leaf]) -> list[dict]:
                 path = "/etc/apt/apt.conf.d/50unattended-upgrades"
                 k = "Unattended-Upgrade::" + ("Remove-Unused-Kernel-Packages" if "kernel" in fld
                                               else "Remove-Unused-Dependencies")
-                extra, expect = {}, "true"
+                extra, expect = {"create": True, "mode": "0644"}, "true"
             if cons.value() != expect:
                 raise Unsupported("apt value")
             task = _task(label, "ansible.builtin.lineinfile", {
@@ -521,16 +547,17 @@ def _linux_tasks(sid: str, rule: Rule, leaves: list[Leaf]) -> list[dict]:
                 "path": "/etc/audit/rules.d/99-stigwatch.rules",
                 "marker": f"# {{mark}} STIGWatch {sid} #{blocks}",
                 "block": "\n".join(_audit_lines(rule_arg)) + "\n", "create": True, "owner": "root",
-                "group": "root", "mode": "0640"}, sid, cat, notify="Restart auditd")
+                "group": "root", "mode": "0640"}, sid, cat, notify="Load audit rules")
         else:  # pragma: no cover - every target kind is handled above
             raise Unsupported("unknown target")
-        out.append((_PRIO[kind], repr(key), task))
+        out.append((_PRIO[kind], repr(key) + "1", task))
     out.sort(key=lambda t: (t[0], t[1]))
     return [t for _, _, t in out]
 
 
 class _Dumper(yaml.SafeDumper):
-    pass
+    def increase_indent(self, flow: bool = False, indentless: bool = False) -> Any:
+        return super().increase_indent(flow, False)   # indent sequences (ansible-lint wants it)
 
 
 def _str_repr(dumper: yaml.SafeDumper, data: str) -> Any:
@@ -561,8 +588,9 @@ def _check_for(benchmark: Benchmark, sid: str) -> engine.Check | None:
         return None
 
 
-def plan(open_results: Any, benchmark: Benchmark) -> Plan:
-    """Split the open findings into generated fixes and manual ones."""
+def plan(open_results: Any, benchmark: Benchmark, domain_role: str | None = None) -> Plan:
+    """Split the open findings into generated fixes and manual ones. ``domain_role`` is the
+    host's role from the scan (``dc``, ``member``, ``standalone``) when known."""
     build = _linux_build if _collector_name(benchmark.benchmark_id) == "linux" else _windows_build
     ops = _ops(benchmark)
     result = Plan()
@@ -572,7 +600,7 @@ def plan(open_results: Any, benchmark: Benchmark) -> Plan:
             if rule is None:
                 raise Unsupported("the rule is not in this benchmark release")
             leaves = _plan_leaves(_check_for(benchmark, sid), item, ops)
-            result.automated.append((sid, rule, build(sid, rule, leaves)))
+            result.automated.append((sid, rule, build(sid, rule, leaves, _observed(item), domain_role)))
         except Unsupported as exc:
             result.manual.append((sid, rule, str(exc)))
     return result
@@ -593,7 +621,8 @@ def _manual_block(p: Plan, prefix: str = "# ") -> list[str]:
     return lines
 
 
-def _linux_build(sid: str, rule: Rule, leaves: list[Leaf]) -> list[dict]:
+def _linux_build(sid: str, rule: Rule, leaves: list[Leaf], obs: dict | None = None,
+                 role: str | None = None) -> list[dict]:
     tasks = _linux_tasks(sid, rule, leaves)
     if not tasks:
         raise Unsupported("nothing to change")
@@ -603,27 +632,42 @@ def _linux_build(sid: str, rule: Rule, leaves: list[Leaf]) -> list[dict]:
 def ansible_playbook(host: Any, open_results: Any, benchmark: Benchmark) -> str:
     p = plan(open_results, benchmark)
     tasks = [t for _, _, ts in p.automated for t in ts]
+    # auditd refuses a manual stop (RefuseManualStop), so it is never restarted: rules are
+    # loaded with augenrules and auditd.conf is re-read with SIGHUP.
     handlers = [
         {"name": "Reload sshd", "ansible.builtin.systemd": {"name": "ssh", "state": "reloaded"}},
-        {"name": "Restart auditd", "ansible.builtin.systemd": {"name": "auditd", "state": "restarted"}},
+        {"name": "Load audit rules", "ansible.builtin.command": "augenrules --load",
+         "changed_when": True},
+        {"name": "Reload auditd configuration",
+         "ansible.builtin.command": "systemctl kill -s SIGHUP auditd", "changed_when": True},
     ]
+    # The play name and the hosts pattern are constants: nothing taken from a scan (a host
+    # name, a comment) ever reaches a value Ansible templates. The host name is in a comment.
     play: dict[str, Any] = {
-        "name": "STIGWatch remediation for " + _host_name(host),
-        "hosts": "all", "become": True, "gather_facts": False,
-        "tasks": tasks or [{"name": "Nothing to change automatically",
-                            "ansible.builtin.meta": "noop", "tags": ["stigwatch"]}],
-        "handlers": handlers,
+        "name": "STIGWatch remediation",
+        "hosts": "{{ stigwatch_target }}", "become": True, "gather_facts": False,
     }
+    if any("ansible.builtin.replace" in t for t in tasks):
+        play["pre_tasks"] = [{
+            "name": "Find sshd drop-in files",
+            "ansible.builtin.find": {"paths": "/etc/ssh/sshd_config.d", "patterns": "*.conf",
+                                     "excludes": "00-stigwatch.conf"},
+            "register": "stigwatch_sshd_dropins", "tags": ["always"],
+        }]
+    play["tasks"] = tasks or [{"name": "Nothing to change automatically",
+                               "ansible.builtin.meta": "noop", "tags": ["stigwatch"]}]
+    play["handlers"] = handlers
     head = [
         f"# {REVIEW_HEADER}",
         "# Generated by STIGWatch from open findings. STIGWatch never applies changes.",
         f"# Host: {_host_name(host)}    Benchmark: {_one_line(benchmark.title, 80)} {benchmark.label}",
         f"# {DISCLAIMER}",
-        "# Run first with: ansible-playbook -i <inventory> -l <host> --check --diff this-file.yml",
+        "# Run first with: ansible-playbook -i <inventory> -e stigwatch_target=<host-or-group> \\",
+        "#   --check --diff this-file.yml   (stigwatch_target is required; the play fails if unset)",
         "# Needs the ansible.posix collection (sysctl): ansible-galaxy collection install ansible.posix",
-        "# Select findings with --tags <STIG-ID>. sshd: a directive set earlier in an",
-        "# sshd_config.d drop-in takes precedence; re-scan after applying. Audit rules: if the",
-        "# rules are immutable (-e 2) a reboot is needed.",
+        "# Select findings with --tags <STIG-ID>. sshd values go in sshd_config.d/00-stigwatch.conf",
+        "# and active copies elsewhere are commented out. Audit rules: if the rules are",
+        "# immutable (-e 2) a reboot is needed.",
         f"# Automated: {len(p.automated)}    Manual: {len(p.manual)}",
         "---",
     ]
@@ -638,7 +682,7 @@ def automated_ids(benchmark: Benchmark) -> list[str]:
     out = []
     for r in benchmark.rules:
         try:
-            build(r.stig_id, r, _plan_leaves(_check_for(benchmark, r.stig_id), None, ops))
+            build(r.stig_id, r, _plan_leaves(_check_for(benchmark, r.stig_id), None, ops), None, None)
         except Unsupported:
             continue
         out.append(r.stig_id)
@@ -657,6 +701,23 @@ _SECEDIT_ACCESS = {
 _RIGHTS_LOCKOUT = {"SeNetworkLogonRight", "SeInteractiveLogonRight", "SeRemoteInteractiveLogonRight",
                    "SeDenyNetworkLogonRight", "SeDenyInteractiveLogonRight",
                    "SeDenyRemoteInteractiveLogonRight", "SeBatchLogonRight", "SeServiceLogonRight"}
+# Registry values that decide who or what may connect or authenticate. A wrong value can lock
+# an administrator, a service or a domain trust out, so these run only with -IncludeAccessChanges.
+_ACCESS_VALUES = {
+    "LocalAccountTokenFilterPolicy", "FilterAdministratorToken", "LDAPServerIntegrity",
+    "LDAPClientIntegrity", "RequireSecuritySignature", "EnableSecuritySignature",
+    "RequireSignOrSeal", "SealSecureChannel", "SignSecureChannel", "RequireStrongKey",
+    "LmCompatibilityLevel", "NTLMMinClientSec", "NTLMMinServerSec", "RestrictAnonymous",
+    "RestrictAnonymousSAM", "RestrictNullSessAccess", "RestrictRemoteSAM", "RestrictRemoteClients",
+    "allownullsessionfallback", "AllowBasic", "AllowUnencryptedTraffic", "AllowDigest",
+    "DisableRunAs", "SupportedEncryptionTypes", "EnableLUA", "ConsentPromptBehaviorAdmin",
+    "ConsentPromptBehaviorUser", "EnableInstallerDetection", "EnableSecureUIAPaths",
+    "EnableVirtualization", "LimitBlankPasswordUse", "UseMachineId", "AllowOnlineID",
+    "EveryoneIncludesAnonymous", "NoLMHash", "MinEncryptionLevel", "fEncryptRPCTraffic",
+    "SMB1", "Start", "RefusePasswordChange", "DisablePasswordChange", "MaximumPasswordAge",
+    "AllowInsecureGuestAuth", "EnableUIADesktopToggle", "InactivityTimeoutSecs",
+    "DisableAutomaticRestartSignOn", "CachedLogonsCount", "scremoveoption",
+}
 _REG_TYPE_WORDS = {"DWord": "REG_DWORD", "String": "REG_SZ"}
 
 
@@ -702,7 +763,12 @@ def _win_target(leaf: Leaf) -> tuple[tuple, str]:
     raise Unsupported(f"{engine.show_path(p)} {leaf.op} has no safe automatic change")
 
 
-def _windows_steps(sid: str, rule: Rule, leaves: list[Leaf]) -> list[str]:
+_SID_RE = re.compile(r"S-1-[0-9]+(-[0-9]+)+")
+_ORG_SID_RE = re.compile(r"S-1-5-(21|80|82)-")
+
+
+def _windows_steps(sid: str, rule: Rule, leaves: list[Leaf], obs: dict | None = None,
+                   role: str | None = None) -> list[str]:
     targets: dict[tuple, Cons] = {}
     for lf in leaves:
         key, fld = _win_target(lf)
@@ -733,24 +799,38 @@ def _windows_steps(sid: str, rule: Rule, leaves: list[Leaf]) -> list[str]:
                 raise Unsupported(f"the fix text names {', '.join(sorted(seen))}, not {_REG_TYPE_WORDS[rtype]}")
             ps_path = "HKLM:" + regkey[len("HKLM"):]
             val = str(v) if rtype == "DWord" else _ps_quote(v)
-            steps.append((1, regkey + "\\" + name, f"    Set-StigRegistryValue -StigId {_ps_quote(sid)} "
-                          f"-Path {_ps_quote(ps_path)} -Name {_ps_quote(name)} -Value {val} -Type {rtype}"))
+            line = (f"    Set-StigRegistryValue -StigId {_ps_quote(sid)} "
+                    f"-Path {_ps_quote(ps_path)} -Name {_ps_quote(name)} -Value {val} -Type {rtype}")
+            if name in _ACCESS_VALUES:
+                line = ("    # WARNING: this can change who or what may connect or sign in; it runs only "
+                        "with -IncludeAccessChanges.\n" + line + " -AccessChange")
+            steps.append((1, regkey + "\\" + name, line))
         elif kind == "sec":
             v = cons.value()
             if isinstance(v, bool) or not isinstance(v, int):
                 raise Unsupported("account policy value")
             sec_access.append(f"{key[1]} = {v}")
         elif kind == "right":
+            # Never replace a list wholesale: keep the principals that are both present and
+            # allowed, so the change can only remove access, never add any.
+            if role == "dc":
+                raise Unsupported("domain controller: user rights are managed by Group Policy, by hand")
             fields = cons.fields("v")
             if any(op == "empty" and arg is not True for op, arg in fields):
                 raise Unsupported("user right with a negated condition")
-            v = cons.value() if any(op == "subset" for op, _ in fields) else []
-            sids = []
-            for s in v:
-                if not re.fullmatch(r"S-1-[0-9]+(-[0-9]+)+", str(s)):
-                    raise Unsupported("user right with a pattern principal")
-                sids.append("*" + s)
-            rights.append(f"{key[1]} = {','.join(sids)}")
+            allowed = cons.value() if any(op == "subset" for op, _ in fields) else []
+            keep: list[str] = []
+            if obs is not None:
+                current = obs.get(engine.show_path(("user_rights", key[1])))
+                if not isinstance(current, list) or not all(
+                        isinstance(x, str) and _SID_RE.fullmatch(x) for x in current):
+                    raise Unsupported("the current principals of this right are not known")
+                excess = [x for x in current if x not in allowed]
+                if any(_ORG_SID_RE.match(x) for x in excess):
+                    raise Unsupported("the excess includes domain, service or virtual-account SIDs; "
+                                      "review who holds the right first")
+                keep = [x for x in current if x in allowed]
+            rights.append(f"{key[1]} = {','.join('*' + x for x in keep)}")
         elif kind == "audit":
             audits.setdefault(key[1], set()).update(f for f, _, _ in cons.entries)
         elif kind == "feature":
@@ -771,7 +851,7 @@ def _windows_steps(sid: str, rule: Rule, leaves: list[Leaf]) -> list[str]:
     if rights:
         body = ", ".join(_ps_quote(line) for line in sorted(rights))
         steps.append((0, "right", f"    Invoke-StigSecedit -StigId {_ps_quote(sid)} -Area 'USER_RIGHTS' "
-                      f"-Section 'Privilege Rights' -Lines @({body})"))
+                      f"-Section 'Privilege Rights' -Lines @({body}) -AccessChange"))
     steps.sort(key=lambda t: (t[0], t[1]))
     return [s for _, _, s in steps]
 
@@ -780,8 +860,9 @@ def _fn_name(sid: str) -> str:
     return "Repair-" + sid
 
 
-def _windows_build(sid: str, rule: Rule, leaves: list[Leaf]) -> str:
-    steps = _windows_steps(sid, rule, leaves)
+def _windows_build(sid: str, rule: Rule, leaves: list[Leaf], obs: dict | None = None,
+                   role: str | None = None) -> str:
+    steps = _windows_steps(sid, rule, leaves, obs, role)
     if not steps:
         raise Unsupported("nothing to change")
     return "\n".join([
@@ -802,9 +883,14 @@ function Set-StigRegistryValue {
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][string]$Name,
         [Parameter(Mandatory = $true)]$Value,
-        [Parameter(Mandatory = $true)][ValidateSet('DWord', 'String')][string]$Type
+        [Parameter(Mandatory = $true)][ValidateSet('DWord', 'String')][string]$Type,
+        [switch]$AccessChange
     )
     $target = "$Path\$Name"
+    if ($AccessChange -and -not $IncludeAccessChanges) {
+        Write-Warning "$StigId skipped: $target changes who or what may connect. Review it, then re-run with -IncludeAccessChanges."
+        return
+    }
     if ($PSCmdlet.ShouldProcess($target, "$StigId set $Type value to $Value")) {
         if (-not (Test-Path -LiteralPath $Path)) {
             New-Item -Path $Path -Force | Out-Null
@@ -824,8 +910,13 @@ function Invoke-StigSecedit {
         [Parameter(Mandatory = $true)][string]$StigId,
         [Parameter(Mandatory = $true)][ValidateSet('SECURITYPOLICY', 'USER_RIGHTS')][string]$Area,
         [Parameter(Mandatory = $true)][string]$Section,
-        [Parameter(Mandatory = $true)][string[]]$Lines
+        [Parameter(Mandatory = $true)][string[]]$Lines,
+        [switch]$AccessChange
     )
+    if ($AccessChange -and -not $IncludeAccessChanges) {
+        Write-Warning "$StigId skipped: $Section changes who may connect or sign in. Review it, then re-run with -IncludeAccessChanges."
+        return
+    }
     $inf = @('[Unicode]', 'Unicode=yes', '[Version]', 'signature="$CHICAGO$"', 'Revision=1', "[$Section]") + $Lines
     if ($PSCmdlet.ShouldProcess("local security policy ($Area)", "$StigId secedit /configure: $($Lines -join '; ')")) {
         $work = Join-Path ([System.IO.Path]::GetTempPath()) ('stigwatch-' + [guid]::NewGuid().ToString('N'))
@@ -880,8 +971,10 @@ function Remove-StigWindowsFeature {
 '''.strip("\n")
 
 
-def powershell_script(host: Any, open_results: Any, benchmark: Benchmark) -> str:
-    p = plan(open_results, benchmark)
+def powershell_script(host: Any, open_results: Any, benchmark: Benchmark,
+                      domain_role: str | None = None) -> str:
+    role = domain_role or (None if isinstance(host, str) else _get(host, "domain_role"))
+    p = plan(open_results, benchmark, role)
     names = [_fn_name(sid) for sid, _, _ in p.automated]
     head = [
         "<#",
@@ -894,12 +987,16 @@ def powershell_script(host: Any, open_results: Any, benchmark: Benchmark) -> str
         "    " + DISCLAIMER,
         "    Dry run by default: nothing changes unless -Apply is given. Run as Administrator.",
         f"    Automated: {len(p.automated)}    Manual: {len(p.manual)}",
+        ".PARAMETER IncludeAccessChanges",
+        "    Also apply changes that can alter who or what may connect or sign in (SMB/LDAP signing,",
+        "    NTLM level, UAC remote filtering, WinRM, user rights). Off by default; review first.",
         ".PARAMETER Apply",
         "    Make the changes. Without it every change is only reported (-WhatIf behaviour).",
         "#>",
         "[CmdletBinding(SupportsShouldProcess = $true)]",
         "param(",
-        "    [switch]$Apply",
+        "    [switch]$Apply,",
+        "    [switch]$IncludeAccessChanges",
         ")",
         "",
         "Set-StrictMode -Version Latest",

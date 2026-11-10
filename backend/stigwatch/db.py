@@ -8,11 +8,13 @@ trends are always computed from ``results``. All SQL is parameterized.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import time
 from contextlib import nullcontext
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 from . import config
 from . import drift as drift_mod
@@ -131,9 +133,23 @@ def _host_dict(row: sqlite3.Row) -> dict:
     return out
 
 
+HOST_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,252}")
+
+
+def validate_host_name(name: Any) -> str:
+    """Host names are letters, digits, dot, dash and underscore (RFC 1123 plus underscore,
+    1 to 253 characters). Anything else is refused, so a name can never carry markup,
+    template syntax, path separators or control characters into an export or a script."""
+    if not isinstance(name, str) or not HOST_NAME_RE.fullmatch(name):
+        raise ValueError("host name must be 1 to 253 characters from A-Z a-z 0-9 . _ - "
+                         "and start with a letter or digit")
+    return name
+
+
 def add_host(conn: sqlite3.Connection, name: str, os: str, benchmark_id: str, *,
              environment: str = "", owner: str = "", tags: list[str] | None = None,
              commit: bool = True) -> int:
+    validate_host_name(name)
     with _tx(conn, commit):
         cur = conn.execute(
             "INSERT INTO hosts (name, os, benchmark_id, environment, owner, tags) "

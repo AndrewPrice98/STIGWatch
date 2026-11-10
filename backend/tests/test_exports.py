@@ -28,6 +28,13 @@ def benches():
     return {b: demo.bundled_benchmark(b) for b in ("ubuntu-22.04", "windows-server-2022")}
 
 
+def raw_host(conn, name, os, benchmark_id, owner="", environment=""):
+    """Insert a host the way old or imported data could hold it, bypassing add_host's check."""
+    conn.execute("INSERT INTO hosts (name, os, benchmark_id, owner, environment) VALUES (?,?,?,?,?)",
+                 (name, os, benchmark_id, owner, environment))
+    conn.commit()
+
+
 def host_scan(conn, name):
     host = db.get_host_by_name(conn, name)
     scan = exports.load_scan(conn, db.list_scans(conn, host["id"])[-1]["id"])
@@ -38,7 +45,8 @@ def test_ckl_structure(seeded, benches):
     host, scan = host_scan(seeded, "web-01")
     bench = benches["ubuntu-22.04"]
     data = exports.ckl(host, scan, bench)
-    assert data.startswith(b"<?xml version='1.0' encoding='utf-8'?>")
+    assert data.startswith(b'<?xml version="1.0" encoding="UTF-8"?>\n<!-- STIGWatch is an independent tool')
+    assert data.index(b"<!--") < data.index(b"<CHECKLIST>")
     root = SafeET.fromstring(data)
     assert root.tag == "CHECKLIST"
     assert [c.tag for c in root if isinstance(c.tag, str)] == ["ASSET", "STIGS"]
@@ -71,6 +79,16 @@ def test_finding_details_and_comments(seeded, benches):
     assert opens
     details = opens[0].find("FINDING_DETAILS").text
     assert "observed" in details and "expected" in details and "Collector command:" in details
+
+
+def test_asset_role_comes_from_the_domain_role_fact(seeded, benches):
+    bench = benches["windows-server-2022"]
+    for name, role in (("dc-01", "Domain Controller"), ("app-01", "Member Server")):
+        host, scan = host_scan(seeded, name)
+        assert SafeET.fromstring(exports.ckl(host, scan, bench)).find("ASSET/ROLE").text == role
+        assert json.loads(exports.cklb(host, scan, bench))["target_data"]["role"] == role
+    host, scan = host_scan(seeded, "web-01")
+    assert SafeET.fromstring(exports.ckl(host, scan, benches["ubuntu-22.04"])).find("ASSET/ROLE").text == "None"
 
 
 def test_cklb_structure(seeded, benches):
@@ -155,13 +173,14 @@ def test_scan_without_results_is_all_not_reviewed(benches):
 
 def test_fleet_csv(seeded):
     rows = list(csv.reader(io.StringIO(exports.fleet_csv(seeded))))
-    assert rows[0][0] == "host" and len(rows) == 1 + 14 + 1 and rows[-1][0].startswith("# STIGWatch")
+    assert rows[0][0] == "host" and len(rows) == 1 + 14 + 2 and rows[-1][0].startswith("# STIGWatch")
+    assert rows[-2][0].startswith("# compliance_percent = NotAFinding / (Open + NotAFinding)")
     web = next(r for r in rows if r[0] == "web-01")
     assert int(web[7]) + int(web[8]) + int(web[9]) == int(web[10])
 
 
 def test_csv_formula_injection_is_neutralised(conn):
-    db.add_host(conn, "=HYPERLINK(\"http://x\")", "linux", "ubuntu-22.04", owner="@evil,\"q\"")
+    raw_host(conn, "=HYPERLINK(\"http://x\")", "linux", "ubuntu-22.04", owner="@evil,\"q\"")
     rows = list(csv.reader(io.StringIO(exports.fleet_csv(conn))))
     assert rows[1][0].startswith("'=") and rows[1][3].startswith("'@")
 
@@ -175,8 +194,8 @@ def test_report_html_is_self_contained_and_escaped(seeded, conn):
     for host in ("web-01", "file-01", "dc-01"):
         assert host in page
     assert "Top regressions" in page and "CAT I" in page and "Compliance" in page
-    db.add_host(conn, "<img src=x onerror=alert(1)>\"'", "windows", "windows-server-2022",
-                environment="<script>x</script>")
+    raw_host(conn, "<img src=x onerror=alert(1)>\"'", "windows", "windows-server-2022",
+             environment="<script>x</script>")
     hostile = exports.fleet_report_html(conn)
     assert "<img" not in hostile and "<script" not in hostile
     assert "&lt;img src=x onerror=alert(1)&gt;" in hostile
@@ -189,7 +208,13 @@ def test_report_numbers_match_the_database(seeded):
         host = db.get_host_by_name(seeded, h["host"])
         trend = db.host_trend(seeded, host["id"])
         assert h["open"] == trend[-1]["open"] and h["series"] == [sum(p["open"].values()) for p in trend]
-    assert any(r["cat"] == "CAT I" for r in data["regressions"]) or True
+    # regressions are exactly the drift of each host's latest scan
+    expected = 0
+    for h in data["hosts"]:
+        host = db.get_host_by_name(seeded, h["host"])
+        drift = db.drift_for_scan(seeded, db.list_scans(seeded, host["id"])[-1]["id"])
+        expected += len(drift["regressed"]) if drift else 0
+    assert len(data["regressions"]) == expected
 
 
 def test_sparkline():

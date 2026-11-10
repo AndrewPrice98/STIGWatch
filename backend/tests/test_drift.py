@@ -241,9 +241,11 @@ def test_comments_are_per_host(conn):
 
 def test_hostile_text_is_stored_as_data(conn):
     nasty = "x'); DROP TABLE hosts;--"
-    host = db.add_host(conn, nasty, "linux", "ubuntu-22.04", owner=nasty)
+    with pytest.raises(ValueError):          # the name itself is validated ...
+        db.add_host(conn, nasty, "linux", "ubuntu-22.04")
+    host = db.add_host(conn, "web-01", "linux", "ubuntu-22.04", owner=nasty)   # ... other text is data
     db.set_comment(conn, host, nasty, nasty)
-    assert db.get_host_by_name(conn, nasty)["owner"] == nasty
+    assert db.get_host_by_name(conn, "web-01")["owner"] == nasty
     assert db.get_comments(conn, host)[nasty]["text"] == nasty
     assert conn.execute("SELECT COUNT(*) FROM hosts").fetchone()[0] == 1
 

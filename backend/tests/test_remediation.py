@@ -57,6 +57,7 @@ def test_playbook_parses_and_every_task_is_tagged_with_its_stig_id(benches):
     text = remediation.ansible_playbook({"name": "h"}, everything_open(bench), bench)
     play = parse(text)
     assert play["become"] is True
+    assert play["name"] == "STIGWatch remediation" and play["hosts"] == "{{ stigwatch_target }}"
     tasks = play["tasks"]
     assert len(tasks) > 100
     for t in tasks:
@@ -64,7 +65,11 @@ def test_playbook_parses_and_every_task_is_tagged_with_its_stig_id(benches):
         assert bench.rule(sid) is not None, sid
         assert sid in t["name"] and "stigwatch" in t["tags"]
         assert t["tags"][1] in ("cat1", "cat2", "cat3")
-    assert {h["name"] for h in play["handlers"]} >= {"Reload sshd", "Restart auditd"}
+    handlers = {h["name"]: h for h in play["handlers"]}
+    assert set(handlers) == {"Reload sshd", "Load audit rules", "Reload auditd configuration"}
+    assert handlers["Load audit rules"]["ansible.builtin.command"] == "augenrules --load"
+    assert handlers["Reload auditd configuration"]["ansible.builtin.command"] ==         "systemctl kill -s SIGHUP auditd"
+    assert "restarted" not in str(play["handlers"])          # auditd refuses a manual stop
     notified = {t["notify"] for t in tasks if "notify" in t}
     assert notified <= {h["name"] for h in play["handlers"]}
 
@@ -73,6 +78,7 @@ def test_playbook_uses_only_idempotent_modules(benches):
     bench = benches["ubuntu-22.04"]
     tasks = tasks_of(remediation.ansible_playbook({"name": "h"}, everything_open(bench), bench))
     allowed = {"ansible.builtin.lineinfile", "ansible.builtin.blockinfile", "ansible.builtin.apt",
+               "ansible.builtin.replace",
                "ansible.builtin.systemd", "ansible.builtin.file", "ansible.builtin.copy",
                "ansible.posix.sysctl"}
     modules = {k for t in tasks for k in t if "." in k}
@@ -80,9 +86,10 @@ def test_playbook_uses_only_idempotent_modules(benches):
     assert not {"command", "shell", "raw", "ansible.builtin.command", "ansible.builtin.shell"} & {
         k for t in tasks for k in t}
     for t in tasks:
-        if "ansible.builtin.lineinfile" in t and "sshd_config" in t["ansible.builtin.lineinfile"]["path"]:
-            assert t["ansible.builtin.lineinfile"]["validate"] == "/usr/sbin/sshd -t -f %s"
-            assert t["notify"] == "Reload sshd"
+        for module in ("ansible.builtin.lineinfile", "ansible.builtin.replace"):
+            if module in t and "sshd_config" in t[module]["path"]:
+                assert t[module]["validate"] == "/usr/sbin/sshd -t -f %s"
+                assert t["notify"] == "Reload sshd"
 
 
 def test_header_and_manual_block(benches):
@@ -111,6 +118,13 @@ def test_values_come_from_the_check_definition(benches):
     assert "TMOUT=900" in by_id["UBTU-22-412030"][0]["ansible.builtin.copy"]["content"]
     assert by_id["UBTU-22-211015"][0]["ansible.builtin.systemd"] == {
         "name": "ctrl-alt-del.target", "masked": True}
+    assert by_id["UBTU-22-213015"][0]["ansible.builtin.systemd"] == {
+        "name": "kdump-tools.service", "state": "stopped", "masked": True}
+    dropin = by_id["UBTU-22-255030"]
+    assert dropin[0][line]["path"] == "/etc/ssh/sshd_config.d/00-stigwatch.conf" and dropin[0][line]["create"]
+    assert "ansible.builtin.replace" in dropin[1] and dropin[1]["ansible.builtin.replace"]["regexp"] ==         r"(?i)^ClientAliveCountMax\s.*$"
+    assert by_id["UBTU-22-213020"][0]["ansible.posix.sysctl"]["sysctl_file"] ==         "/etc/sysctl.d/99-zz-stigwatch.conf"
+    assert by_id["UBTU-22-214015"][0][line]["create"] is True
     assert by_id["UBTU-22-215030"][0]["ansible.builtin.apt"]["state"] == "absent"
     sysctl = by_id["UBTU-22-213020"]
     assert len(sysctl) == 1 and sysctl[0]["ansible.posix.sysctl"]["value"] == "2"
@@ -138,7 +152,8 @@ def test_met_conditions_are_not_changed(benches):
                 {"path": "sshd_config.permituserenvironment.value", "observed": "yes"}]
     tasks = tasks_of(remediation.ansible_playbook(
         {"name": "h"}, [{"stig_id": "UBTU-22-255025", "status": "Open", "evidence": evidence}], bench))
-    assert [t["ansible.builtin.lineinfile"]["line"] for t in tasks] == ["PermitUserEnvironment no"]
+    assert [t["ansible.builtin.lineinfile"]["line"] for t in tasks if "ansible.builtin.lineinfile" in t]         == ["PermitUserEnvironment no"]
+    assert len(tasks) == 2
 
 
 def test_partial_fix_is_never_generated(benches):
@@ -153,7 +168,7 @@ def test_only_open_findings_are_remediated(benches):
     items = [{"stig_id": "UBTU-22-255040", "status": "NotAFinding"},
              {"stig_id": "UBTU-22-255045", "status": "Open"}]
     tasks = tasks_of(remediation.ansible_playbook({"name": "h"}, items, bench))
-    assert [t["tags"][0] for t in tasks] == ["UBTU-22-255045"]
+    assert {t["tags"][0] for t in tasks} == {"UBTU-22-255045"}
 
 
 def test_cat_i_first_and_order_is_stable(benches):
@@ -215,8 +230,12 @@ def test_one_function_per_automatable_open_finding(seeded, benches):
             continue
         opens = latest_open(seeded, host)
         script = windows_script(bench, opens, host)
+        # user rights are generated only from known, builtin-only principals, so the demo
+        # hosts' rights findings may be manual
         want = {r["stig_id"] for r in opens} & automated
-        assert {n[len("Repair-"):] for n in fn_names(script)} == want, host["name"]
+        got = {n[len("Repair-"):] for n in fn_names(script)}
+        assert got <= want and all(s.startswith("WN22-UR-") for s in want - got), host["name"]
+        want = got
         steps = re.search(r"\$steps = @\((.*)\)", script).group(1)
         assert set(re.findall(r"'(Repair-[A-Z0-9-]+)'", steps)) == {f"Repair-{s}" for s in want}
         assert script == windows_script(bench, opens, host)       # deterministic
@@ -230,7 +249,9 @@ def test_windows_values_and_types(benches):
     assert "-Name 'SupportedEncryptionTypes' -Value 2147483640 -Type DWord" in script
     assert "-Name 'CachedLogonsCount' -Value '4' -Type String" in script
     assert "'MinimumPasswordLength = 14'" in script
-    assert "'SeDebugPrivilege = *S-1-5-32-544'" in script and "'SeTcbPrivilege = '" in script
+    # without the observed principals a user right is never rewritten
+    assert "SeDebugPrivilege = " not in script
+    assert "the current principals of this right are not known" in script[script.index("MANUAL"):]
     assert "-Guid '{0CCE9215-69AE-11D9-BED3-505054503030}'" in script          # logon
     assert "Remove-StigWindowsFeature -StigId 'WN22-00-000360' -Name 'Telnet-Client'" in script
     # logon rights can lock administrators out, and HKCU is a per-user hive: both stay manual
@@ -300,3 +321,51 @@ def test_automated_rule_counts(benches):
     assert set(linux) <= {r.stig_id for r in benches["ubuntu-22.04"].rules}
     checks = engine.load_checks("windows-server-2022").checks
     assert set(windows) <= set(checks)          # never a rule without a check definition
+
+# -- injection and validation ------------------------------------------------------------------
+
+JINJA_HOSTS = ["{{ lookup('pipe','id') }}", "{% set x = 1 %}web", "a{{7*7}}b",
+               "#{{ x }}\n- name: evil", "$(whoami) `id` {{ ansible_env }} %"]
+
+
+def _strings(v, out):
+    if isinstance(v, dict):
+        for k, x in v.items():
+            _strings(k, out)
+            _strings(x, out)
+    elif isinstance(v, list):
+        for x in v:
+            _strings(x, out)
+    elif isinstance(v, str):
+        out.append(v)
+    return out
+
+
+@pytest.mark.parametrize("name", JINJA_HOSTS)
+def test_host_names_never_reach_a_templated_value(benches, name):
+    bench = benches["ubuntu-22.04"]
+    text = remediation.ansible_playbook({"name": name}, everything_open(bench), bench)
+    strings = _strings(parse(text), [])
+    for needle in ("lookup", "whoami", "ansible_env", "evil", "7*7", "set x"):
+        assert not any(needle in x for x in strings), needle
+    templated = {x for x in strings if "{{" in x or "{%" in x}
+    allowed = ("{{ stigwatch_target }}", "{{ item }}")
+    assert all(x in allowed or x.startswith("{{ ['/etc/ssh/sshd_config'] + (stigwatch_sshd_dropins")
+               for x in templated), templated
+    header, body = text.split("\n---", 1)
+    assert all(line.startswith("#") for line in header.splitlines())
+    host_line = next(ln for ln in header.splitlines() if ln.startswith("# Host:"))
+    assert not any(c in host_line for c in "{}%$`<>")
+
+
+def test_playbook_target_is_a_required_variable():
+    text = remediation.ansible_playbook({"name": "h"}, [], demo.bundled_benchmark("ubuntu-22.04"))
+    assert parse(text)["hosts"] == "{{ stigwatch_target }}" and "stigwatch_target" in text.split("---")[0]
+
+
+def test_db_refuses_unsafe_host_names(conn):
+    for bad in ("{{ x }}", "a b", "a/b", "a\nb", "x" * 254, "", "-lead", "a;b", "<b>", "é"):
+        with pytest.raises(ValueError):
+            db.add_host(conn, bad, "linux", "ubuntu-22.04")
+    assert db.add_host(conn, "web-01.example.com", "linux", "ubuntu-22.04")
+    assert db.add_host(conn, "x" * 253, "linux", "ubuntu-22.04")

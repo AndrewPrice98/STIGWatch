@@ -1,0 +1,9 @@
+# Settings for linting the playbooks STIGWatch generates (see the ansible-playbooks CI job).
+profile: basic
+skip_list:
+  # SIGHUP to auditd is sent with systemctl kill; the systemd module has no equivalent.
+  - command-instead-of-module
+exclude_paths:
+  - .github/
+  - frontend/
+  - node_modules/

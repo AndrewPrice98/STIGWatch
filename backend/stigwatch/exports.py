@@ -26,7 +26,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from typing import Any, Callable
 
-from . import benchmarks, db
+from . import benchmarks, db, remediation
 from .benchmarks import Benchmark
 
 DISCLAIMER = ("STIGWatch is an independent tool. It is not a DISA product and does not "
@@ -170,10 +170,9 @@ def _status(result: dict | None) -> str:
 
 
 def _role(scan: dict) -> str:
-    fact = ((scan.get("raw") or {}).get("facts") or {}).get("domain_role") or {}
-    value = fact.get("value") if isinstance(fact, dict) else None
-    role = value.get("role") if isinstance(value, dict) else None
-    return {"dc": "Domain Controller", "member": "Member Server"}.get(role, "None")
+    """STIG Viewer's asset role, from the stored domain-role fact of a Windows scan."""
+    return {"dc": "Domain Controller", "member": "Member Server",
+            "standalone": "Member Server"}.get(remediation.domain_role_of(scan.get("raw")), "None")
 
 
 # --------------------------------------------------------------------------- .ckl (XML)
@@ -196,7 +195,6 @@ def ckl(host: dict, scan: dict, benchmark: Benchmark) -> bytes:
     name = host_name_of(host)
     results = _results_by_id(scan)
     root = ET.Element("CHECKLIST")
-    root.append(ET.Comment(" " + DISCLAIMER + " "))
     asset = ET.SubElement(root, "ASSET")
     for tag, text in (
             ("ROLE", _role(scan)), ("ASSET_TYPE", "Computing"), ("MARKING", "NONE"),
@@ -249,7 +247,10 @@ def ckl(host: dict, scan: dict, benchmark: Benchmark) -> bytes:
         _sub(v, "SEVERITY_OVERRIDE", "")
         _sub(v, "SEVERITY_JUSTIFICATION", "")
     ET.indent(root, space="  ")
-    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    # The disclaimer comment sits before the root element (ElementTree cannot place it there).
+    body = ET.tostring(root, encoding="unicode")
+    return (f'<?xml version="1.0" encoding="UTF-8"?>\n<!-- {DISCLAIMER} -->\n'
+            + body + "\n").encode("utf-8")
 
 
 # --------------------------------------------------------------------------- .cklb (JSON)
@@ -393,6 +394,10 @@ def fleet_csv(conn: sqlite3.Connection, data: dict | None = None) -> str:
             s["NotAFinding"], s["Not_Applicable"], s["Not_Reviewed"],
             "" if r["compliance"] is None else r["compliance"], r["regressed"],
             r["series"][0] if r["series"] else "", r["scans"])])
+    w.writerow(["# compliance_percent = NotAFinding / (Open + NotAFinding) in the latest scan; "
+                "Not_Reviewed and Not_Applicable rules are not counted. newly_regressed = rules "
+                "that went from NotAFinding or Not_Applicable to Open since the previous scan. "
+                "first_scan_open = open findings in the host's first scan."])
     w.writerow(["# " + DISCLAIMER])
     return out.getvalue()
 

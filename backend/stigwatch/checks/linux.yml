@@ -1079,7 +1079,7 @@ checks:
       path: audit_rules
       audit:
         syscalls: [execve]
-        filters: [["uid!=euid", "euid=0"], ["gid!=egid", "egid=0"]]
+        filters: [["C:uid!=euid", "euid=0"], ["C:gid!=egid", "egid=0"]]
     rationale: execve with uid!=euid (euid 0) and gid!=egid (egid 0) must be audited for b32 and b64.
   - stig_id: UBTU-22-654235
     facts: [audit_rules]

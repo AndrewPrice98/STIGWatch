@@ -859,7 +859,10 @@ def parse_audit_rule(line: str) -> dict | None:
             m = _FIELD_RE.match(arg)
             if m:
                 name, op, val = m.groups()
-                if name == "arch":
+                if t == "-C":
+                    # -C compares two fields (uid!=euid); it is not the same as -F uid!=<value>
+                    rule["filters"].add(f"C:{name}{op}{val}")
+                elif name == "arch":
                     rule["arch"] = val
                 elif name in ("path", "dir"):
                     rule["path"] = canon_path(val)
@@ -968,9 +971,12 @@ def _audit_describe(arg: dict) -> str:
         return (f"an audit rule '-a always,exit -F path={arg['exec']} -F perm=x "
                 "-F auid>=1000 -F auid!=-1'")
     variants = arg.get("filters", [["auid>=1000", "auid!=-1"]])
+    def flags(variant: list[str]) -> str:
+        return " ".join(("-C " + f[2:]) if f.startswith("C:") else "-F " + f for f in variant)
+
     return (f"audit rules '-a always,exit -S {','.join(arg['syscalls'])}' for "
             f"{' and '.join(arg.get('arches', ['b32', 'b64']))} with "
-            + " / ".join("-F " + " -F ".join(v) for v in variants))
+            + " / ".join(flags(v) for v in variants))
 
 
 def _audit_observe(rules: Any, arg: dict) -> Any:

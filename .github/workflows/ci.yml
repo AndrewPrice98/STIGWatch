@@ -211,6 +211,33 @@ jobs:
             Write-Host "dry run ok $($file.Name)"
           }
 
+  # Syntax-checks and lints the generated Ansible playbooks (demo hosts and an all-rules playbook).
+  ansible-playbooks:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install dependencies
+        run: pip install -r backend/requirements-dev.txt ansible-core ansible-lint
+      - name: Install the ansible.posix collection
+        run: ansible-galaxy collection install ansible.posix
+      - name: Generate remediation for the demo hosts
+        working-directory: backend
+        run: python scripts/generate_remediation_samples.py ../remediation-out
+      - name: ansible-playbook --syntax-check
+        run: |
+          for f in remediation-out/*.yml; do
+            echo "== $f"
+            ansible-playbook -i localhost, -e stigwatch_target=localhost --syntax-check "$f"
+          done
+      - name: ansible-lint
+        run: ansible-lint remediation-out/*.yml
+
   frontend:
     # Skipped step by step until the dashboard adds package.json (Task 9). hashFiles() is
     # not available in a job-level `if`, so the condition sits on each step.

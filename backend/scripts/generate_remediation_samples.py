@@ -36,7 +36,9 @@ def main(argv: list[str]) -> int:
             if host["os"] == "linux":
                 text, name = remediation.ansible_playbook(host, opens, bench), f"{host['name']}.yml"
             else:
-                text, name = remediation.powershell_script(host, opens, bench), f"{host['name']}.ps1"
+                text, name = remediation.powershell_script(
+                    host, opens, bench,
+                    domain_role=remediation.domain_role_of(db.get_raw(conn, scan["id"]))), f"{host['name']}.ps1"
             (out / name).write_text(text, encoding="utf-8", newline="\n")
         conn.close()
     for bid, ext, fn in (("ubuntu-22.04", "yml", remediation.ansible_playbook),

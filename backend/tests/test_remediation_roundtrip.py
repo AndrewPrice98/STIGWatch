@@ -256,3 +256,15 @@ def test_access_changes_sit_behind_a_switch(wbench):
     cc = script.split("function Repair-WN22-CC-000020 ")[1].split("\n}")[0]
     assert "-AccessChange" not in cc
     assert "if ($AccessChange -and -not $IncludeAccessChanges)" in script
+
+
+def test_automated_ids_exclude_user_rights_without_observations(wbench):
+    ids = remediation.automated_ids(wbench)
+    assert "WN22-UR-000100" not in ids      # needs the current principals, unknown here
+    assert not any(wbench.rule(i) and "UR-" in i for i in ids)
+
+
+def test_generate_samples_script_passes_domain_role():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "scripts" / "generate_remediation_samples.py").read_text("utf-8")
+    assert "domain_role=remediation.domain_role_of(" in src

@@ -66,7 +66,17 @@ def test_playbook_parses_and_every_task_is_tagged_with_its_stig_id(benches):
         assert sid in t["name"] and "stigwatch" in t["tags"]
         assert t["tags"][1] in ("cat1", "cat2", "cat3")
     handlers = {h["name"]: h for h in play["handlers"]}
-    assert set(handlers) == {"Reload sshd", "Load audit rules", "Reload auditd configuration"}
+    assert set(handlers) == {"Reload sshd", "Load audit rules", "Reload auditd configuration",
+                             "Report audit rules that need a reboot"}
+    # immutable audit rules (-e 2) must not fail the run: reported, with a reboot note
+    assert handlers["Load audit rules"]["failed_when"] is False
+    report = handlers["Report audit rules that need a reboot"]
+    assert report["listen"] == "Load audit rules" and "Reboot" in report["ansible.builtin.debug"]["msg"]
+    pre = play["pre_tasks"]
+    assert pre[0]["ansible.builtin.command"]["argv"][-1] == "/etc/ssh/sshd_config"
+    assert pre[0]["check_mode"] is False
+    assert "sshd_config.d" in pre[1]["ansible.builtin.assert"]["fail_msg"]
+    assert "stigwatch_sshd_include.rc == 0" in pre[1]["ansible.builtin.assert"]["that"]
     assert handlers["Load audit rules"]["ansible.builtin.command"] == "augenrules --load"
     assert handlers["Reload auditd configuration"]["ansible.builtin.command"] ==         "systemctl kill -s SIGHUP auditd"
     assert "restarted" not in str(play["handlers"])          # auditd refuses a manual stop
@@ -369,3 +379,16 @@ def test_db_refuses_unsafe_host_names(conn):
             db.add_host(conn, bad, "linux", "ubuntu-22.04")
     assert db.add_host(conn, "web-01.example.com", "linux", "ubuntu-22.04")
     assert db.add_host(conn, "x" * 253, "linux", "ubuntu-22.04")
+
+
+def test_sshd_include_regexp_matches_ubuntu_default():
+    import re, subprocess
+    text = remediation.ansible_playbook({"name": "h"}, [{"stig_id": "UBTU-22-255025", "status": "Open"}],
+                                        __import__("stigwatch.benchmarks", fromlist=["x"]).load_benchmark("ubuntu-22.04"))
+    play = parse(text)
+    if "pre_tasks" not in play:
+        return
+    pattern = play["pre_tasks"][0]["ansible.builtin.command"]["argv"][2]
+    rx = re.compile(pattern.replace("[[:space:]]", r"\s"), re.I)
+    assert rx.search("Include /etc/ssh/sshd_config.d/*.conf")
+    assert not rx.search("#Include /etc/ssh/sshd_config.d/*.conf")

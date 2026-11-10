@@ -168,6 +168,13 @@ def get_host_by_name(conn: sqlite3.Connection, name: str) -> dict | None:
     return _host_dict(row) if row else None
 
 
+def find_host(conn: sqlite3.Connection, name: str) -> dict | None:
+    """The host with this name, ignoring case (host names are case-insensitive)."""
+    row = conn.execute("SELECT * FROM hosts WHERE name = ? COLLATE NOCASE ORDER BY id LIMIT 1",
+                       (name,)).fetchone()
+    return _host_dict(row) if row else None
+
+
 def list_hosts(conn: sqlite3.Connection) -> list[dict]:
     return [_host_dict(r) for r in conn.execute("SELECT * FROM hosts ORDER BY name")]
 
@@ -333,6 +340,25 @@ def _record_alerts(conn: sqlite3.Connection, host_id: int, scan_id: int) -> None
             "message, created_at) VALUES (?, ?, ?, ?, ?, 'cat1_regression', ?, ?)",
             (host_id, scan_id, result["prev_scan_id"], item["stig_id"], item["cat"],
              f"{host}: {item['stig_id']} (CAT I) went from {item['from']} to Open.", when))
+
+
+def rebuild_next_alerts(conn: sqlite3.Connection, scan_id: int, *, commit: bool = True) -> int | None:
+    """After a scan was stored out of order (collected before the host's latest scan), the
+    scan collected just after it has a new predecessor. Its CAT I alerts are recomputed
+    against that predecessor. Returns that scan's id, or None when the scan is the newest."""
+    scan = get_scan(conn, scan_id)
+    if scan is None:
+        return None
+    nxt = conn.execute(
+        "SELECT id FROM scans WHERE host_id = ? AND (collected_at > ? OR (collected_at = ? AND id > ?)) "
+        "ORDER BY collected_at, id LIMIT 1",
+        (scan["host_id"], scan["collected_at"], scan["collected_at"], scan_id)).fetchone()
+    if nxt is None:
+        return None
+    with _tx(conn, commit):
+        conn.execute("DELETE FROM alerts WHERE scan_id = ? AND kind = 'cat1_regression'", (nxt["id"],))
+        _record_alerts(conn, scan["host_id"], int(nxt["id"]))
+    return int(nxt["id"])
 
 
 def list_alerts(conn: sqlite3.Connection, host_id: int | None = None) -> list[dict]:

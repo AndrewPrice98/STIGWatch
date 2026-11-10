@@ -640,8 +640,17 @@ def ansible_playbook(host: Any, open_results: Any, benchmark: Benchmark) -> str:
     # loaded with augenrules and auditd.conf is re-read with SIGHUP.
     handlers = [
         {"name": "Reload sshd", "ansible.builtin.systemd": {"name": "ssh", "state": "reloaded"}},
+        # With immutable rules (-e 2) the kernel refuses the load until a reboot. That is
+        # reported, not treated as a failure of the whole run.
         {"name": "Load audit rules", "ansible.builtin.command": "augenrules --load",
-         "changed_when": True},
+         "register": "stigwatch_augenrules", "changed_when": True, "failed_when": False},
+        {"name": "Report audit rules that need a reboot",
+         "ansible.builtin.debug": {"msg": "augenrules could not load the rules (the audit "
+                                          "configuration is immutable, -e 2, or the load failed). "
+                                          "Reboot the host to activate them and check the output "
+                                          "of augenrules --check."},
+         "listen": "Load audit rules",
+         "when": "stigwatch_augenrules is defined and stigwatch_augenrules.rc | default(0) != 0"},
         {"name": "Reload auditd configuration",
          "ansible.builtin.command": "systemctl kill -s SIGHUP auditd", "changed_when": True},
     ]
@@ -653,6 +662,23 @@ def ansible_playbook(host: Any, open_results: Any, benchmark: Benchmark) -> str:
     }
     if any("ansible.builtin.replace" in t for t in tasks):
         play["pre_tasks"] = [{
+            "name": "Look for an Include of sshd_config.d/*.conf in sshd_config",
+            "ansible.builtin.command": {
+                "argv": ["grep", "-Eqi", r"^[[:space:]]*Include[[:space:]].*sshd_config\.d/\*\.conf",
+                         "/etc/ssh/sshd_config"]},
+            "register": "stigwatch_sshd_include", "changed_when": False, "failed_when": False,
+            "check_mode": False, "tags": ["always"],
+        }, {
+            "name": "Require that sshd_config includes sshd_config.d/*.conf",
+            "ansible.builtin.assert": {
+                "that": ["stigwatch_sshd_include.rc == 0"],
+                "fail_msg": "/etc/ssh/sshd_config has no Include of /etc/ssh/sshd_config.d/*.conf, "
+                            "so the sshd settings this play writes to sshd_config.d/00-stigwatch.conf "
+                            "would not take effect. Add that Include line (Ubuntu 22.04 ships it) "
+                            "and run the play again.",
+                "quiet": True},
+            "tags": ["always"],
+        }, {
             "name": "Find sshd drop-in files",
             "ansible.builtin.find": {"paths": "/etc/ssh/sshd_config.d", "patterns": "*.conf",
                                      "excludes": "00-stigwatch.conf"},
@@ -824,6 +850,8 @@ def _windows_steps(sid: str, rule: Rule, leaves: list[Leaf], obs: dict | None = 
                 raise Unsupported("user right with a negated condition")
             allowed = cons.value() if any(op == "subset" for op, _ in fields) else []
             keep: list[str] = []
+            if obs is None:
+                raise Unsupported("the current principals of this right are not known")
             if obs is not None:
                 current = obs.get(engine.show_path(("user_rights", key[1])))
                 if not isinstance(current, list) or not all(
